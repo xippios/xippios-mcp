@@ -6,7 +6,8 @@
 # share an endpoint. Lists name exact task names (a task function's __name__). auth is
 # "bearer" by default, and token_env names the environment variable that holds the
 # token, a name ending in _TOKEN (XIPPIOS_MCP_<ENDPOINT>_TOKEN): the token itself stays in
-# the environment, never in this file.
+# the environment, never in this file. An endpoint with auth = "none" that serves a write
+# server is served over HTTP on a loopback --host only, unless it sets allow_remote = true.
 
 [endpoints.agriculture]                        # served at /agriculture/mcp
 packages = ["usda-nass", "usda-psd", "comtrade"]
@@ -18,3 +19,12 @@ allow_remote = false                           # the default
 [endpoints.accounting-write]
 packages = ["cashctrl:write"]
 auth = "none"
+
+# Behind a reverse proxy, name the Host values the proxy forwards (and the browser origins
+# it serves, if any). The list replaces the mcp SDK's own check, which accepts loopback
+# Host and Origin values on a loopback --host and checks neither beyond loopback; add
+# "127.0.0.1:*" to keep direct local clients. "<host>:*" accepts any port.
+#
+# [http]
+# allowed_hosts = ["mcp.example.com"]
+# allowed_origins = ["https://mcp.example.com"]

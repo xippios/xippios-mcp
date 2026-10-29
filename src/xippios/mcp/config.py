@@ -14,10 +14,16 @@ The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
     packages = ["cashctrl:write"]
     auth = "none"
 
+    [http]
+    allowed_hosts = ["mcp.example.com"]
+    allowed_origins = ["https://mcp.example.com"]
+
+The optional ``[http]`` table names the ``Host`` and ``Origin`` header values the HTTP
+transport accepts, for a host behind a reverse proxy (ADR-0026, decision 5).
 ``load_config`` checks the file's shape and nothing that needs a package: the known
 slugs, the task names and the servers are checked when the endpoints are built
 (``xippios.mcp.servers``). It reads no environment variable: ``token_env`` names one,
-and the bearer reads it when it serves (conventions §7). Every refusal is a
+and the bearer reads it when ``--http`` starts (conventions §7). Every refusal is a
 ``ConfigError`` naming the file, the endpoint and the key, never a value a key might
 hold.
 """
@@ -26,14 +32,14 @@ import json
 import re
 import tomllib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal
 
 from xippios.core import ConfigError
 
-__all__ = ["Endpoint", "HostConfig", "PackageRef", "load_config", "refusal"]
+__all__ = ["Endpoint", "HostConfig", "HttpConfig", "PackageRef", "load_config", "refusal"]
 
 WRITE_SUFFIX = ":write"
 """The suffix that names a package's write server, ``cashctrl:write``."""
@@ -43,9 +49,10 @@ _ENDPOINT_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 # names _API_KEY, _REFRESH_TOKEN and _SECRET (gap, row 309 (e)).
 _TOKEN_VARIABLE = re.compile(r"[A-Z][A-Z0-9_]*_TOKEN")
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
-_TOP_KEYS = ("endpoints",)
+_TOP_KEYS = ("endpoints", "http")
 _ENDPOINT_KEYS = ("packages", "include", "exclude", "auth", "token_env", "allow_remote")
 _LISTS = ("include", "exclude")
+_HTTP_KEYS = ("allowed_hosts", "allowed_origins")
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,16 +107,37 @@ class Endpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class HttpConfig:
+    """The ``[http]`` table: the headers the HTTP transport accepts behind a proxy.
+
+    Both empty, the table's default, leave the mcp SDK's own check: on a loopback bind
+    host it accepts loopback ``Host`` and ``Origin`` values only, and beyond loopback it
+    checks neither.
+
+    Attributes:
+        allowed_hosts: The ``Host`` header values accepted, e.g.
+            ``("mcp.example.com",)``; ``"<host>:*"`` accepts any port.
+        allowed_origins: The ``Origin`` header values accepted, e.g.
+            ``("https://mcp.example.com",)``; a request without ``Origin`` passes.
+    """
+
+    allowed_hosts: tuple[str, ...] = ()
+    allowed_origins: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class HostConfig:
     """The config file, read and checked.
 
     Attributes:
         endpoints: Per endpoint name, its endpoint, in the file's order.
         path: The file it was read from.
+        http: The ``[http]`` table; empty when the file has none.
     """
 
     endpoints: Mapping[str, Endpoint]
     path: Path
+    http: HttpConfig = field(default_factory=HttpConfig)
 
 
 def _key(parts: Sequence[str]) -> str:
@@ -141,7 +169,9 @@ def load_config(path: Path) -> HostConfig:
     data = _read(path)
     unknown = [key for key in data if key not in _TOP_KEYS]
     if unknown:
-        raise refusal(path, unknown[:1], "unknown key; the file holds [endpoints] only")
+        raise refusal(
+            path, unknown[:1], "unknown key; the file holds [endpoints] and, optionally, [http]"
+        )
     tables = data.get("endpoints")
     if tables is None:
         raise refusal(path, ["endpoints"], "missing; name an endpoint as [endpoints.<name>]")
@@ -150,7 +180,8 @@ def load_config(path: Path) -> HostConfig:
     if not tables:
         raise refusal(path, ["endpoints"], "names no endpoint")
     endpoints = {name: _endpoint(path, name, table) for name, table in tables.items()}
-    return HostConfig(endpoints=MappingProxyType(endpoints), path=path)
+    http = _http(path, data.get("http"))
+    return HostConfig(endpoints=MappingProxyType(endpoints), path=path, http=http)
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -309,3 +340,41 @@ def _auth(
             "names it by its suffix (the value is not shown here, in case it is the token)",
         )
     return auth, token_env
+
+
+def _http(path: Path, table: Any) -> HttpConfig:
+    """The ``[http]`` table: ``allowed_hosts`` and ``allowed_origins``, both optional."""
+    if table is None:
+        return HttpConfig()
+    if not isinstance(table, dict):
+        raise refusal(path, ["http"], "must be a table, [http]")
+    for key in table:
+        if key not in _HTTP_KEYS:
+            raise refusal(path, ["http", key], f"unknown key; [http] has {', '.join(_HTTP_KEYS)}")
+    hosts = _strings(path, "allowed_hosts", table.get("allowed_hosts"), 'e.g. ["mcp.example.com"]')
+    origins = _strings(
+        path, "allowed_origins", table.get("allowed_origins"), 'e.g. ["https://mcp.example.com"]'
+    )
+    if "allowed_hosts" in table and not hosts:
+        raise refusal(
+            path,
+            ["http", "allowed_hosts"],
+            "names no host, which would refuse every request; name the Host values the "
+            "proxy forwards, or leave the key out for the mcp SDK's own check",
+        )
+    if origins and not hosts:
+        raise refusal(
+            path,
+            ["http", "allowed_origins"],
+            "is given without allowed_hosts; the Host check would refuse every request, so "
+            "name allowed_hosts as well",
+        )
+    return HttpConfig(allowed_hosts=hosts, allowed_origins=origins)
+
+
+def _strings(path: Path, key: str, value: Any, example: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise refusal(path, ["http", key], f"must be a list of strings, {example}")
+    return tuple(value)
