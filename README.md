@@ -7,9 +7,10 @@ packages' tools on one endpoint, never read and write tools together. It runs on
 locally and on streamable HTTP on a server, each endpoint with its own auth, a bearer
 token by default; the secrets stay in the environment, never in the config file.
 
-The config and the mount are here: `xippios-mcp --config <path>` checks the config,
-builds every endpoint's server and lists the endpoints. The transports and the bearer
-come with the next steps; until then the host serves nothing.
+`xippios-mcp --config <path>` checks a config, builds every endpoint's server and lists
+the endpoints; `--stdio <endpoint>` serves one endpoint on stdio, and `--http` serves
+every endpoint over streamable HTTP, each with its bearer (see Serving). The Docker
+image comes with a later step.
 
 ## Install
 
@@ -87,9 +88,11 @@ auth = "none"
 - `auth` is `"bearer"` by default, or `"none"`. With the bearer, `token_env` names the
   environment variable that holds the token, a name ending in `_TOKEN`
   (`XIPPIOS_MCP_<ENDPOINT>_TOKEN`), and the token itself stays in the environment, never
-  in the file. `allow_remote` is `false` by default. The host checks the shape of the
-  three now and reads no variable; the bearer and the loopback rule come with the HTTP
-  transport.
+  in the file. The host reads the variable once, when `--http` starts, and never on
+  stdio or when it lists. `allow_remote` is `false` by default; it lets an `auth =
+  "none"` write endpoint beyond loopback (see The loopback rule).
+- An optional `[http]` table names the `Host` and `Origin` values the HTTP transport
+  accepts behind a reverse proxy (see Behind a reverse proxy).
 
 Check a config before serving it:
 
@@ -107,13 +110,114 @@ accounting-write: write, 11 tools of cashctrl
 ```
 
 A key, package or task the host refuses stops it with exit status 2 and a message that
-names the file, the endpoint and the key.
+names the file, the endpoint and the key. The list runs neither the mounted-once check
+nor the loopback check of Serving, which need `--http` and its `--host`.
 
 A server the host builds carries none of the packages' own instructions: its
 instructions are one sentence naming its packages and their tool counts. No endpoint
 takes a package's command-line options, such as cashctrl's `--org` lock or the ceilings
 above, since the host runs no package's entry point. The package contract of the next
 template release gives the host what it needs to carry them, in its 0.2.0.
+
+## Serving
+
+### stdio
+
+```bash
+xippios-mcp --config host.toml --stdio agriculture
+```
+
+serves the one endpoint `agriculture` on stdio, for an MCP client that starts the host
+as its own process. stdio has no auth: the host reads no token variable, and an
+endpoint's `auth`, `token_env` and `allow_remote` apply to HTTP only. In Claude Code:
+
+```bash
+claude mcp add agriculture -- xippios-mcp --config host.toml --stdio agriculture
+```
+
+with the config's absolute path in place of `host.toml` when Claude Code runs in another
+directory.
+
+### Streamable HTTP
+
+```bash
+xippios-mcp --config host.toml --http --host 127.0.0.1 --port 8000
+```
+
+serves every endpoint of the config from one process, each at
+`http://127.0.0.1:8000/<name>/mcp`: `http://127.0.0.1:8000/agriculture/mcp` for the
+sample. `--host` defaults to `127.0.0.1` and `--port` to 8000; both need `--http`, and
+`--http` and `--stdio` exclude each other. Before it serves, the host reads each bearer
+endpoint's token and applies the checks below; a refusal exits with status 2 and serves
+nothing. A package's own server serves one HTTP endpoint: two endpoints that each name
+`usda-nass` alone are refused, and an `include` or `exclude` list on one of them makes
+its server one the host builds.
+
+### The bearer
+
+An endpoint with `auth = "bearer"` answers a request without the token with `401` and
+`WWW-Authenticate: Bearer realm="xippios-mcp"`, and one with a wrong token with
+`error="invalid_token"` added; such a request never reaches the endpoint. The token is
+the value of the variable `token_env` names, read once when `--http` starts: an unset or
+empty variable stops the host with exit status 2. The host keeps the token's SHA-256
+digest only, compares in constant time, and never logs the token or the `Authorization`
+header. A random token will do, `openssl rand -hex 32` for instance, set in the
+environment of the host and of the client.
+
+In Claude Code:
+
+```bash
+claude mcp add --transport http agriculture http://127.0.0.1:8000/agriculture/mcp \
+  --header 'Authorization: Bearer ${XIPPIOS_MCP_AGRICULTURE_TOKEN}'
+```
+
+In single quotes the shell passes `${XIPPIOS_MCP_AGRICULTURE_TOKEN}` on as written, and
+Claude Code expands it from its own environment when it connects, so the token stays out
+of Claude Code's config; in double quotes the shell would write the token itself into
+the config. Claude Code reads some well-known credential variables as empty in a remote
+server's headers (its own, a cloud provider's, others such as `NPM_TOKEN`); a name of
+the operator's own, such as `XIPPIOS_MCP_AGRICULTURE_TOKEN`, is outside that set and
+expands as written. When a token does not arrive, `claude --debug-file <file>` logs
+`never expanded toward a remote server` for a covered name.
+
+The bearer does not serve claude.ai. claude.ai signs in with OAuth: it starts on a `401`
+that names a `resource_metadata` document, and it needs an OAuth authorization server.
+The host advertises no `resource_metadata` and is no authorization server, so claude.ai
+needs one in front of the host, which 0.1.0 leaves out (ADR-0026, decision 10).
+
+### The loopback rule
+
+An endpoint with `auth = "none"` that serves a write server, `cashctrl:write` for
+instance, carries no authentication, so `--http` serves it on a loopback `--host` only,
+`127.0.0.1`, `localhost` or `::1`, as a package's own entry point keeps its write server
+(ADR-0014, decision 9). On another `--host` the host refuses to start unless the
+endpoint sets `allow_remote = true`, and then a gateway in front of it has to
+authenticate. A read endpoint with `auth = "none"`, and every bearer endpoint, is served
+on any host.
+
+A read server that its package holds to loopback, as sdk-google-mail holds its own, is
+not held there by the host's 0.1.0: the host reads the packages' loopback option from
+its 0.2.0 on (queue row 282). Until then, keep an `auth = "none"` endpoint of such a
+package on a loopback `--host`, or give it the bearer.
+
+### Behind a reverse proxy
+
+On a loopback `--host` the mcp SDK checks the `Host` and `Origin` headers itself and
+accepts loopback values only, which keeps a web page from reaching the host through DNS
+rebinding. Beyond loopback it checks neither, unless the config names what to accept:
+
+```toml
+[http]
+allowed_hosts = ["mcp.example.com"]            # the Host values the proxy forwards
+allowed_origins = ["https://mcp.example.com"]  # browser origins, if any
+```
+
+The lists replace the SDK's loopback default for every endpoint: a request whose `Host`
+is not listed gets `421`, and one with an `Origin` that is not listed gets `403`; a
+request without `Origin` passes. `"<host>:*"` accepts any port, so add `"127.0.0.1:*"`
+to keep clients that connect directly. Both keys are optional, but `allowed_origins`
+needs `allowed_hosts`. Without the table, a host bound beyond loopback gets no `Host`
+check.
 
 ## Licence
 

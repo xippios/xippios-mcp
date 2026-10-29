@@ -1504,6 +1504,7 @@ usda-psd = [
 dev = [
     { name = "anyio" },
     { name = "detect-secrets" },
+    { name = "httpx2" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -1543,6 +1544,7 @@ provides-extras = ["cashctrl", "comtrade", "eurostat", "faostat", "usda-esmis", 
 dev = [
     { name = "anyio", specifier = ">=4" },
     { name = "detect-secrets", specifier = ">=1.5" },
+    { name = "httpx2", specifier = ">=2.16.0" },
     { name = "mypy", specifier = ">=1.18" },
     { name = "pre-commit", specifier = ">=4" },
     { name = "pytest", specifier = ">=8" },

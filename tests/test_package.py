@@ -119,7 +119,8 @@ def test_cli_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert exited.value.code == 0
     out = capsys.readouterr().out
     assert out.startswith("usage: xippios-mcp")
-    assert "--config" in out
+    for option in ("--config", "--stdio ENDPOINT", "--http", "--host", "--port"):
+        assert option in out
 
 
 def test_cli_without_config(capsys: pytest.CaptureFixture[str]) -> None:

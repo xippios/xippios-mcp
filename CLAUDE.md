@@ -4,8 +4,8 @@
 tools of the family's packages on one server, by endpoint and group (ADR-0026). It is a
 public package that is no source: no tasks, no `api/`, no fixtures and no
 `docs/upstream/` snapshot (ADR-0026, decision 1), and the one repository, package and
-session of the family not named `sdk-*`. The config and the mount are here; the
-transports, the bearer and the image come in the next steps.
+session of the family not named `sdk-*`. The config, the mount, the transports and the
+bearer are here; the image comes in a later step.
 
 ## What this package is
 
@@ -13,8 +13,8 @@ transports, the bearer and the image come in the next steps.
 | --- | --- |
 | Repository | `xippios/xippios-mcp`; PyPI `xippios-mcp`; session `xippios-mcp` |
 | Import path | `xippios.mcp`; `src/xippios/` is a PEP 420 namespace package (conventions §1) |
-| Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required; without a transport flag it loads the config, builds every endpoint and prints one line per endpoint, a refusal exiting with status 2 |
-| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, which the host imports itself, and `starlette` and `uvicorn`, which it imports from the next step on, with lower bounds at core's lock (conventions §11) |
+| Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required; `--stdio ENDPOINT` serves one endpoint on stdio, `--http` (with `--host`, default `127.0.0.1`, and `--port`, default 8000) every endpoint at `/<name>/mcp`; without either it loads the config, builds every endpoint and prints one line per endpoint; a refusal exits with status 2 |
+| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, `starlette` and `uvicorn`, which the host imports itself, with lower bounds at core's lock (conventions §11) |
 | Sources | extras, not dependencies, each with a `>=` floor and no upper bound (ADR-0026, decision 9): `cashctrl` (`xippios-cashctrl>=0.3.0`), `comtrade` (`>=0.2.0`), `eurostat` (`>=0.2.0`), `faostat` (`>=0.1.0`), `usda-esmis` (`>=0.2.0`), `usda-esr` (`>=0.2.0`), `usda-gats` (`>=0.2.0`), `usda-nass` (`>=0.2.0`), `usda-psd` (`>=0.3.0`); `all` is their union. `usda-wasde` joins later (Johannes, 2026-10-29): its 0.1.1 bounds `xippios-usda-esmis` below 0.2, so the ten together do not resolve |
 
 ### What 0.1.0 reads of a package
@@ -41,7 +41,28 @@ slugs, task names and a package's `server.name`, but never the value of `token_e
 `auth` or `allow_remote`, nor the value of an unknown key. A `ValueError` from
 `register_tasks` is re-raised as `servers.BuildError`, a `ValueError`, with the file, the
 endpoint and the package prefixed. `token_env` names a variable ending in `_TOKEN`,
-which the host does not read until the bearer serves.
+which the host reads once, when `--http` starts. An optional `[http]` table names
+`allowed_hosts` and `allowed_origins`.
+
+### The transports and the bearer
+
+`--stdio ENDPOINT` runs that endpoint's server on stdio, without auth and without reading
+a token variable. `--http` builds one Starlette app (`app.build_app`): each endpoint's
+`streamable_http_app` mounted at `/<name>` with the SDK's `/mcp` path, every session
+manager entered in the app's one lifespan, served by uvicorn (`app.serve_http`). Before
+it mounts, it refuses an `auth = "none"` write endpoint (core's `is_write_server`) on a
+bind host beyond loopback without `allow_remote = true` (ADR-0026, decision 5; queue row
+296), and a package's own server on two endpoints, since `streamable_http_app` replaces
+the server's one session manager (gap, row 310 (d)). The loopback hosts are a private
+copy of core's `_LOOPBACK_HOSTS`, `app._LOOPBACK_HOSTS`, with a comment naming queue row
+282, as sdk-google-mail carries one (ADR-0023, decisions 2 and 4); a test keeps it equal
+to core's. The `[http]` table becomes the SDK's `TransportSecuritySettings`; without it the
+SDK's default for the bind host applies. A bearer endpoint is wrapped in `auth.Bearer`,
+a pure ASGI wrapper that holds the token's SHA-256 digest (`auth.token_digest` reads the
+variable once), compares with `hmac.compare_digest`, answers 401 with `WWW-Authenticate:
+Bearer realm="xippios-mcp"` (`error="invalid_token"` for a wrong token) and no
+`resource_metadata` (ADR-0026, decision 10), and strips the `Authorization` header
+before the endpoint's app (gap, row 310).
 
 ### Core internals
 
@@ -61,10 +82,15 @@ src/xippios/mcp/
   __init__.py      public surface: __version__
   py.typed         PEP 561 marker; consumers' mypy --strict needs it
   _version.py      __version__ from distribution metadata
-  cli.py           the xippios-mcp entry point, main(argv): --config loaded, built and
-                   listed, a refusal exiting with status 2
-  config.py        load_config: the TOML file, HostConfig, Endpoint, PackageRef and the
-                   static checks
+  cli.py           the xippios-mcp entry point, main(argv): --config loaded and built,
+                   then --stdio ENDPOINT, --http or the endpoint list; a refusal exits
+                   with status 2
+  config.py        load_config: the TOML file, HostConfig, Endpoint, PackageRef,
+                   HttpConfig and the static checks
+  auth.py          the bearer: token_digest (the token variable, read once) and Bearer,
+                   the ASGI wrapper that answers 401
+  app.py           build_app: the loopback and mounted-once checks, the transport
+                   security, one Mount per endpoint and the lifespan; serve_http (uvicorn)
   packages.py      known_slugs (the host's extras), import_path, load_package: a
                    package's tasks, server and caps, and the task-name checks
   servers.py       build_endpoint and build_all: the package's own server or one the
@@ -75,10 +101,15 @@ tests/
   conftest.py      enables xippios.core.testing.plugin, which keeps the run offline
   test_package.py  the host's own checks: the namespace level, py.typed, __version__, the
                    core bound, the extras' floors and their union, the entry point, the CLI
-  test_config.py   load_config and every static refusal
+  test_config.py   load_config, the [http] table and every static refusal
   test_servers.py  the mount through mcp.Client in-process, the pass-through and the
                    refusals that need a package
-  test_cli.py      the endpoint lines and exit status 2
+  test_auth.py     the token variable and the bearer's answers
+  test_app.py      MCP sessions over the app in-process (httpx2's ASGITransport inside
+                   the lifespan), the Host check, the loopback and mounted-once
+                   refusals, serve_http with uvicorn's Server.run stubbed
+  test_cli.py      --stdio, --http (serve_http stubbed), the endpoint lines and exit
+                   status 2; no test binds a port
 .github/workflows/ ci.yml (the required ci check, with the CHANGELOG step), publish.yml
                    (the release train: tag, build, PyPI), gates.yml (the merge gates as
                    jobs, off until GATES_CALLER is 1)
@@ -169,6 +200,11 @@ release is ported by hand until the host flavour of the scaffold (queue row 284)
   `_REFRESH_TOKEN` or `_SECRET`.
 - Never read, print or write the variable a config's `token_env` names, the bearer of an
   endpoint; its name ends in `_TOKEN`, which `load_config` enforces (queue row 309 (e)).
+  The host's code reads it in one place, `auth.token_digest`, once when `--http` starts,
+  and keeps its digest only; tests set a test value of their own with
+  `monkeypatch.setenv`, its literal marked `# pragma: allowlist secret`.
+- Never log, print or echo a token or the `Authorization` header: the bearer strips the
+  header before the endpoint's app, and a refusal names the variable, never its value.
 - Never write a key or a token into a file or a commit: the secrets stay in the
   environment (conventions §7; ADR-0026, decision 2).
 - Never add a task, an endpoint wrapper or a fixture here, and never rename or re-map a

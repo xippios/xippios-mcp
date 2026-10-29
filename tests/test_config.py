@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 from xippios.core import ConfigError
 
-from xippios.mcp.config import PackageRef, load_config
+from xippios.mcp.config import HttpConfig, PackageRef, load_config
+
+SAMPLE = Path(__file__).resolve().parents[1] / "docs" / "host.example.toml"
 
 GOOD = """
 [endpoints.agriculture]
@@ -61,6 +63,10 @@ def test_a_good_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     trade = config.endpoints["trade"]
     assert dict(trade.include) == {"comtrade": frozenset({"get_data", "list_partners"})}
+
+    assert config.http == HttpConfig()
+    assert config.http.allowed_hosts == ()
+    assert config.http.allowed_origins == ()
 
     accounting = config.endpoints["accounting-write"]
     assert accounting.packages == (PackageRef("cashctrl", write=True),)
@@ -316,6 +322,43 @@ REFUSALS = [
         "endpoints.agriculture.allow_remote",
         "must be true or false",
     ),
+    ("http that is no table", f"http = 3\n{_endpoint(NASS)}", "http", "must be a table, [http]"),
+    (
+        "an unknown http key",
+        f"{_endpoint(NASS)}[http]\nport = 8000\n",
+        "http.port",
+        "unknown key; [http] has allowed_hosts, allowed_origins",
+    ),
+    (
+        "allowed_hosts that is no list",
+        f'{_endpoint(NASS)}[http]\nallowed_hosts = "mcp.example.com"\n',
+        "http.allowed_hosts",
+        "must be a list of strings",
+    ),
+    (
+        "allowed_hosts with an empty string",
+        f'{_endpoint(NASS)}[http]\nallowed_hosts = ["mcp.example.com", ""]\n',
+        "http.allowed_hosts",
+        "must be a list of strings",
+    ),
+    (
+        "an empty allowed_hosts",
+        f"{_endpoint(NASS)}[http]\nallowed_hosts = []\n",
+        "http.allowed_hosts",
+        "names no host, which would refuse every request",
+    ),
+    (
+        "allowed_origins that is no list of strings",
+        f'{_endpoint(NASS)}[http]\nallowed_hosts = ["mcp.example.com"]\nallowed_origins = [3]\n',
+        "http.allowed_origins",
+        "must be a list of strings",
+    ),
+    (
+        "allowed_origins without allowed_hosts",
+        f'{_endpoint(NASS)}[http]\nallowed_origins = ["https://mcp.example.com"]\n',
+        "http.allowed_origins",
+        "is given without allowed_hosts",
+    ),
 ]
 
 
@@ -343,3 +386,46 @@ def test_an_unknown_key_names_the_key_not_its_value(tmp_path: Path) -> None:
     message = _refused(_write(tmp_path, _endpoint(f'{NASS}\ntoken = "{value}"')))
     assert "endpoints.agriculture.token: unknown key" in message
     assert value not in message
+
+
+def test_the_http_table(tmp_path: Path) -> None:
+    text = (
+        f"{_endpoint(NASS)}[http]\n"
+        'allowed_hosts = ["mcp.example.com", "127.0.0.1:*"]\n'
+        'allowed_origins = ["https://mcp.example.com"]\n'
+    )
+    config = load_config(_write(tmp_path, text))
+    assert config.http == HttpConfig(
+        allowed_hosts=("mcp.example.com", "127.0.0.1:*"),
+        allowed_origins=("https://mcp.example.com",),
+    )
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        pytest.param("[http]\n", id="an empty table"),
+        pytest.param("[http]\nallowed_origins = []\n", id="an empty allowed_origins alone"),
+    ],
+)
+def test_an_http_table_that_names_no_host_is_the_default(tmp_path: Path, table: str) -> None:
+    config = load_config(_write(tmp_path, f"{_endpoint(NASS)}{table}"))
+    assert config.http == HttpConfig()
+
+
+def test_allowed_hosts_without_origins(tmp_path: Path) -> None:
+    text = f'{_endpoint(NASS)}[http]\nallowed_hosts = ["mcp.example.com"]\n'
+    config = load_config(_write(tmp_path, text))
+    assert config.http == HttpConfig(allowed_hosts=("mcp.example.com",))
+
+
+def test_the_samples_http_example_loads(tmp_path: Path) -> None:
+    """The commented ``[http]`` table of the sample config, uncommented, is a good one."""
+    lines = SAMPLE.read_text(encoding="utf-8").splitlines()
+    start = lines.index("# [http]")
+    example = [line.removeprefix("# ") for line in lines[start:]]
+    text = "\n".join([*lines[:start], *example]) + "\n"
+    config = load_config(_write(tmp_path, text))
+    assert config.http == HttpConfig(
+        allowed_hosts=("mcp.example.com",), allowed_origins=("https://mcp.example.com",)
+    )
