@@ -156,9 +156,10 @@ def _check_mounted_once(config: HostConfig, built: Mapping[str, Built]) -> None:
 def serve_http(app: Starlette, host: str, port: int) -> None:
     """Serve ``app`` with uvicorn on ``host`` and ``port`` until the process is stopped.
 
-    uvicorn's access log names the method, the path and the status of each request,
-    never a header; the httpx and httpcore loggers are quieted again after uvicorn
-    configured logging (ADR-0005).
+    uvicorn's access log names the client address, the method, the path with its query
+    string and the status of each request, never a header, so never a bearer token; the
+    httpx and httpcore loggers are quieted again after uvicorn configured logging
+    (ADR-0005).
 
     Args:
         app: The app from ``build_app``.
