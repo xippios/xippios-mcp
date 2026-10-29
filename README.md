@@ -159,10 +159,11 @@ An endpoint with `auth = "bearer"` answers a request without the token with `401
 `WWW-Authenticate: Bearer realm="xippios-mcp"`, and one with a wrong token with
 `error="invalid_token"` added; such a request never reaches the endpoint. The token is
 the value of the variable `token_env` names, read once when `--http` starts: an unset or
-empty variable stops the host with exit status 2. The host keeps the token's SHA-256
-digest only, compares in constant time, and never logs the token or the `Authorization`
-header. A random token will do, `openssl rand -hex 32` for instance, set in the
-environment of the host and of the client.
+empty variable stops the host with exit status 2, and so does a value with leading or
+trailing whitespace, which no token a client sends can match. The host keeps the token's
+SHA-256 digest only, compares in constant time, and never logs the token or the
+`Authorization` header. A random token will do, `openssl rand -hex 32` for instance, set
+in the environment of the host and of the client.
 
 In Claude Code:
 
@@ -196,9 +197,12 @@ authenticate. A read endpoint with `auth = "none"`, and every bearer endpoint, i
 on any host.
 
 A read server that its package holds to loopback, as sdk-google-mail holds its own, is
-not held there by the host's 0.1.0: the host reads the packages' loopback option from
-its 0.2.0 on (queue row 282). Until then, keep an `auth = "none"` endpoint of such a
-package on a loopback `--host`, or give it the bearer.
+not held there by the host's 0.1.0: the packages' loopback-only option is planned for
+`xippios-core`'s next minor, for the host to read from its own 0.2.0 on. None of the
+nine packages 0.1.0 serves holds a read server to loopback, so the case cannot arise
+before a package that does joins, sdk-google-mail once it has a release and an extra.
+Until the host reads the option, keep an `auth = "none"` endpoint of such a package on
+a loopback `--host`, or give it the bearer.
 
 ### Behind a reverse proxy
 
