@@ -1,0 +1,129 @@
+[project]
+name = "xippios-mcp"
+version = "0.1.0"
+description = "The self-hosted MCP host for the xippios SDKs"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "XIPPIOS GmbH" }]
+keywords = ["sdk", "mcp", "host", "xippios"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+# Core keeps the one-minor bound of conventions §12: the `>=` exception covers the source
+# packages alone (ADR-0026 decision 9; ADR-0021, amendment 2026-10-29, point 4). The host's
+# own imports take lower bounds at core's lock (conventions §11).
+dependencies = [
+  "xippios-core[mcp]~=0.3.0",
+  "mcp>=2.3.0",
+  "starlette>=1.9.0",
+  "uvicorn>=0.54.0",
+]
+
+[project.optional-dependencies]
+# One extra per source package with a >= floor at its PyPI version: the host serves every
+# package at its latest (ADR-0026 decision 9). `all` is the union of the others.
+cashctrl = ["xippios-cashctrl>=0.3.0"]
+comtrade = ["xippios-comtrade>=0.2.0"]
+eurostat = ["xippios-eurostat>=0.2.0"]
+faostat = ["xippios-faostat>=0.1.0"]
+usda-esmis = ["xippios-usda-esmis>=0.2.0"]
+usda-esr = ["xippios-usda-esr>=0.2.0"]
+usda-gats = ["xippios-usda-gats>=0.2.0"]
+usda-nass = ["xippios-usda-nass>=0.2.0"]
+usda-psd = ["xippios-usda-psd>=0.3.0"]
+all = [
+  "xippios-cashctrl>=0.3.0",
+  "xippios-comtrade>=0.2.0",
+  "xippios-eurostat>=0.2.0",
+  "xippios-faostat>=0.1.0",
+  "xippios-usda-esmis>=0.2.0",
+  "xippios-usda-esr>=0.2.0",
+  "xippios-usda-gats>=0.2.0",
+  "xippios-usda-nass>=0.2.0",
+  "xippios-usda-psd>=0.3.0",
+]
+
+[project.scripts]
+xippios-mcp = "xippios.mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/xippios/xippios-mcp"
+Changelog = "https://github.com/xippios/xippios-mcp/blob/main/CHANGELOG.md"
+Issues = "https://github.com/xippios/xippios-mcp/issues"
+
+[dependency-groups]
+# ruff is pinned to the rev of the ruff-pre-commit hook in .pre-commit-config.yaml, so a new
+# lock does not drift from the hook; the two move together.
+dev = [
+  "ruff==0.17.1",
+  "mypy>=1.18",
+  "pre-commit>=4",
+  "pytest>=8",
+  "respx>=0.22",
+  "anyio>=4",
+  "detect-secrets>=1.5",
+  "xippios-core[testing]~=0.3.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xippios"]
+
+[tool.hatch.build.targets.sdist]
+# Anchored: hatch reads gitignore-style patterns, so a bare README.md would match a
+# README.md in any directory. The sdist ships no tests; they live in the repository.
+include = ["/src", "/docs", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["docs", ".claude"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "D", "ANN", "PTH", "PT", "T20", "C4"]
+ignore = [
+  "ANN401", # Any is allowed where upstream payloads are untyped by nature
+  "D105",   # magic methods need no docstring
+  "D107",   # __init__ is documented on the class
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["xippios.mcp"]
+known-third-party = ["xippios.core"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --import-mode=importlib"
+testpaths = ["tests"]
+# record_property, in a live test say, warns under xunit2 when a run writes --junitxml.
+junit_family = "xunit1"
