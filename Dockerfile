@@ -7,10 +7,12 @@
 #     -e XIPPIOS_MCP_AGRICULTURE_TOKEN \
 #     xippios-mcp
 #
-# The image runs as the non-root user `xippios`, reads its config from
-# /etc/xippios-mcp/host.toml, which the operator mounts, and binds 0.0.0.0 on port 8000,
-# so every endpoint is remote: give each a bearer. Every token comes from the environment
-# by the name the config's token_env gives it; the image holds no config, key or token.
+# The image runs as the non-root user `xippios`, uid and gid 10001, which USER names by
+# number so that a Kubernetes runAsNonRoot check can verify it without a runAsUser. It
+# reads its config from /etc/xippios-mcp/host.toml, which the operator mounts, and binds
+# 0.0.0.0 on port 8000, so every endpoint is remote: give each a bearer. Every token comes
+# from the environment by the name the config's token_env gives it; the image holds no
+# config, key or token.
 # Both base images are pinned by digest, the tag in a comment, and bumped deliberately.
 
 # python:3.12-slim, 2026-10-28 (Dockerfile comments take a line of their own)
@@ -41,6 +43,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # python:3.12-slim, 2026-10-28, the same base as the builder's
 FROM python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
 
+# The user exists by name too, so `xippios` resolves inside the container.
 RUN groupadd --system --gid 10001 xippios \
     && useradd --system --uid 10001 --gid xippios --no-create-home \
        --home-dir /nonexistent --shell /usr/sbin/nologin xippios
@@ -50,7 +53,8 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-USER xippios
+# By number: a runAsNonRoot check cannot verify a named user.
+USER 10001:10001
 EXPOSE 8000
 
 ENTRYPOINT ["xippios-mcp"]

@@ -72,10 +72,12 @@ the same way; both are bumped deliberately (conventions §13's pinning rule, rea
 images; gap, row 313 (a)). The builder installs this checkout with `uv sync --locked
 --no-dev --extra all --no-editable`, the tested set (Johannes, 2026-10-29, G5 question 5
 of the 0.1.0 briefing), and the final stage carries the venv alone: it runs as the
-non-root user `xippios` (uid 10001), reads `/etc/xippios-mcp/host.toml`, which the
-operator mounts, serves `--http` on `0.0.0.0:8000` and takes every token from the
-environment (gap, row 313 (b)). `ci.yml`'s `docker` job builds it and runs `--help`;
-0.1.0 pushes no image to a registry (ADR-0026, decision 2).
+non-root user `xippios`, uid and gid 10001, which `USER 10001:10001` names by number so
+that a Kubernetes `runAsNonRoot` check can verify it without a `runAsUser`, reads
+`/etc/xippios-mcp/host.toml`, which the operator mounts, serves `--http` on
+`0.0.0.0:8000` and takes every token from the environment (gap, row 313 (b)). `ci.yml`'s
+`docker` job builds it and runs `--help`; 0.1.0 pushes no image to a registry (ADR-0026,
+decision 2).
 
 ### Core internals
 
@@ -124,7 +126,8 @@ tests/
   test_cli.py      --stdio, --http (serve_http stubbed), the endpoint lines and exit
                    status 2; no test binds a port
 Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --locked` of
-                   `all`, the non-root user xippios, --http on 0.0.0.0:8000
+                   `all`, the non-root user xippios as USER 10001:10001, --http on
+                   0.0.0.0:8000
 .dockerignore      keeps .git, .venv, tests, .worktrees, the caches and any .env or
                    .envrc out of the build context
 .github/workflows/ ci.yml (the required ci check: the test matrix with the CHANGELOG step,
