@@ -129,10 +129,9 @@ def test_cli_without_config(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--config" in capsys.readouterr().err
 
 
-def test_cli_with_config_serves_nothing_yet(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
+def test_cli_with_a_missing_config(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    path = tmp_path / "host.toml"
     with pytest.raises(SystemExit) as exited:
-        main(["--config", str(tmp_path / "host.toml")])
+        main(["--config", str(path)])
     assert exited.value.code == 2
-    assert "config loader" in capsys.readouterr().err
+    assert f"{path}: no such file" in capsys.readouterr().err
