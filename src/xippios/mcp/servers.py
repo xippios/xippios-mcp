@@ -27,7 +27,16 @@ from xippios.mcp._version import __version__
 from xippios.mcp.config import Endpoint, HostConfig, PackageRef, refusal
 from xippios.mcp.packages import Package, load_package
 
-__all__ = ["Built", "build_all", "build_endpoint"]
+__all__ = ["BuildError", "Built", "build_all", "build_endpoint"]
+
+
+class BuildError(ValueError):
+    """Core's ``register_tasks`` refused a package's tasks for a server the host builds.
+
+    Its ``ValueError`` (a cap whose task is absent, a write task without ``confirm``),
+    re-raised with the file, the endpoint and the package prefixed, so the command line
+    tells it from an unrelated ``ValueError``.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,9 +59,12 @@ class Built:
 def build_all(config: HostConfig) -> dict[str, Built]:
     """Build every endpoint of ``config``, in the file's order.
 
+    Args:
+        config: The checked config, e.g. ``load_config(Path("host.toml"))``.
+
     Raises:
         ConfigError: See ``build_endpoint``.
-        ValueError: See ``build_endpoint``.
+        BuildError: See ``build_endpoint``.
     """
     return {name: build_endpoint(endpoint) for name, endpoint in config.endpoints.items()}
 
@@ -68,7 +80,7 @@ def build_endpoint(endpoint: Endpoint) -> Built:
             ``:write``; a name of an include or exclude list is no tool of its package;
             or a package's own server is not the write or read server the entry names.
             The message names the file, the endpoint and the key.
-        ValueError: ``register_tasks`` refused a package's tasks, a cap or a write task
+        BuildError: ``register_tasks`` refused a package's tasks, a cap or a write task
             without ``confirm``; the message names the file, the endpoint and the package.
     """
     packages = [_load(endpoint, ref) for ref in endpoint.packages]
@@ -132,7 +144,7 @@ def _host_built(endpoint: Endpoint, packages: list[Package]) -> Built:
                 read_only=not package.ref.write,
             )
         except ValueError as exc:
-            raise ValueError(
+            raise BuildError(
                 f"{endpoint.path}: endpoints.{endpoint.name}: {package.ref}: {exc}"
             ) from exc
     return Built(server=server, write=endpoint.write, host_built=True, tools=tuple(names))

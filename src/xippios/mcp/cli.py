@@ -30,7 +30,7 @@ from xippios.core.mcp.server import quiet_request_logging
 
 from xippios.mcp.app import build_app, serve_http
 from xippios.mcp.config import HostConfig, load_config
-from xippios.mcp.servers import Built, build_all
+from xippios.mcp.servers import BuildError, Built, build_all
 
 __all__ = ["main"]
 
@@ -98,7 +98,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         built = build_all(config)
         app = build_app(config, built, host=host) if args.http else None
-    except (ConfigError, ValueError) as exc:
+    except (ConfigError, BuildError) as exc:
         parser.error(str(exc))
     if args.stdio is not None:
         server = built[args.stdio].server

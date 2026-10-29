@@ -40,7 +40,12 @@ def known_slugs() -> tuple[str, ...]:
 
 
 def import_path(slug: str) -> str:
-    """The import path of the package ``slug``, e.g. ``xippios.usda.nass`` for ``usda-nass``."""
+    """The import path of a package: ``xippios.`` and the slug, each hyphen a dot.
+
+    Args:
+        slug: The package's slug, e.g. ``"usda-nass"`` (``xippios.usda.nass``) or
+            ``"cashctrl"`` (``xippios.cashctrl``).
+    """
     return "xippios." + slug.replace("-", ".")
 
 
@@ -77,7 +82,8 @@ class Package:
 
         Raises:
             ConfigError: A name is in ``BULK_TASKS``, so no tool, or names no task of the
-                package; or the lists keep no tool. The message names the package's tools.
+                package; or the lists keep no tool. The refusal of a name that is no task
+                names the package's tools.
         """
         named = include if include is not None else exclude or frozenset()
         bulk = sorted(name for name in named if name in self.functions and name not in self.tools)

@@ -17,6 +17,7 @@ from starlette.applications import Starlette
 from xippios.cashctrl import tasks_write as cashctrl_tasks_write
 from xippios.comtrade import tasks as comtrade_tasks
 from xippios.usda.nass import tasks as nass_tasks
+from xippios.usda.psd import tasks as psd_tasks
 
 import xippios.mcp.cli
 from xippios.mcp.cli import main
@@ -68,9 +69,14 @@ auth = "none"
 
 
 def test_the_sample_config(capsys: pytest.CaptureFixture[str]) -> None:
+    """The README's two lines, the counts derived from the installed packages."""
     main(["--config", str(SAMPLE)])
-    lines = capsys.readouterr().out.splitlines()
-    assert [line.split(":")[0] for line in lines] == ["agriculture", "accounting-write"]
+    agriculture = _count(nass_tasks) + _count(psd_tasks) + _count(comtrade_tasks) - 1
+    assert "get_counts" in nass_tasks.__all__  # the sample excludes it
+    assert capsys.readouterr().out.splitlines() == [
+        f"agriculture: read, {agriculture} tools of usda-nass, usda-psd, comtrade",
+        f"accounting-write: write, {_count(cashctrl_tasks_write)} tools of cashctrl",
+    ]
 
 
 def test_a_bad_config_exits_2_with_the_refusal(
@@ -100,20 +106,41 @@ def test_a_refusal_that_needs_the_package_exits_2(
     assert f"{path}: endpoints.agriculture.include.usda-nass: get_count: no task" in err
 
 
-def test_a_value_error_from_the_build_exits_2(
+def create_person(org: str) -> None:
+    """A write task without ``confirm``, which ``register_tasks`` refuses."""
+
+
+def test_a_refusal_of_register_tasks_exits_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``register_tasks`` refuses a cap or a write task without confirm with a ValueError."""
-
-    def build_all(config: object) -> None:
-        raise ValueError("host.toml: endpoints.agriculture: usda-nass: caps names no task")
-
-    monkeypatch.setattr(xippios.mcp.cli, "build_all", build_all)
-    path = _write(tmp_path, '[endpoints.agriculture]\npackages = ["usda-nass"]\nauth = "none"\n')
+    monkeypatch.setattr(cashctrl_tasks_write, "create_person", create_person)
+    path = _write(
+        tmp_path,
+        '[endpoints.accounting-write]\npackages = ["cashctrl:write"]\nauth = "none"\n'
+        'exclude = { cashctrl = ["delete_person"] }\n',
+    )
     with pytest.raises(SystemExit) as exited:
         main(["--config", str(path)])
     assert exited.value.code == 2
-    assert "error: host.toml: endpoints.agriculture: usda-nass: caps" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert (
+        f"error: {path}: endpoints.accounting-write: cashctrl:write: cashctrl_create_person: "
+        "no parameter confirm"
+    ) in err
+
+
+def test_an_unrelated_value_error_is_no_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ValueError the build does not raise as BuildError propagates: no exit status 2."""
+
+    def build_all(config: object) -> None:
+        raise ValueError("a bug in a package's import")
+
+    monkeypatch.setattr(xippios.mcp.cli, "build_all", build_all)
+    path = _write(tmp_path, '[endpoints.agriculture]\npackages = ["usda-nass"]\nauth = "none"\n')
+    with pytest.raises(ValueError, match="a bug in a package's import"):
+        main(["--config", str(path)])
 
 
 def _exits_2(argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:

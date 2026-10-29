@@ -8,6 +8,8 @@ packages' ``tasks.py`` here, never typed in.
 """
 
 import sys
+from importlib import import_module
+from importlib.util import find_spec
 from pathlib import Path
 from types import ModuleType
 
@@ -32,8 +34,8 @@ from xippios.usda.psd import tasks as psd_tasks
 import xippios.mcp.packages
 from xippios.mcp import __version__
 from xippios.mcp.config import load_config
-from xippios.mcp.packages import known_slugs
-from xippios.mcp.servers import Built, build_all, build_endpoint
+from xippios.mcp.packages import import_path, known_slugs
+from xippios.mcp.servers import BuildError, Built, build_all, build_endpoint
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "docs" / "host.example.toml"
@@ -278,6 +280,37 @@ def test_a_package_server_that_is_not_the_one_named(
     message = _refused(tmp_path, 'packages = ["cashctrl:write"]')
     assert "endpoints.agriculture.packages: cashctrl:write: the package's server" in message
     assert "is a read server" in message
+
+
+def create_person(org: str) -> None:
+    """A write task without ``confirm``, which ``register_tasks`` refuses."""
+
+
+def test_a_refusal_of_register_tasks_names_the_file_endpoint_and_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cashctrl_tasks_write, "create_person", create_person)
+    with pytest.raises(BuildError) as refused:
+        _build(
+            tmp_path,
+            'packages = ["cashctrl:write"]\nexclude = { cashctrl = ["delete_person"] }',
+            name="accounting-write",
+        )
+    assert isinstance(refused.value, ValueError)
+    assert str(refused.value).startswith(
+        f"{tmp_path / 'host.toml'}: endpoints.accounting-write: cashctrl:write: "
+        "cashctrl_create_person: no parameter confirm"
+    )
+
+
+@pytest.mark.parametrize("slug", known_slugs())
+def test_every_task_name_is_its_functions_name(slug: str) -> None:
+    """The lists and MCP_CAPS are keyed by ``__name__``, as core's cap check reads them."""
+    path = import_path(slug)
+    names = ["tasks", "tasks_write"] if find_spec(f"{path}.tasks_write") else ["tasks"]
+    for tasks in [import_module(f"{path}.{name}") for name in names]:
+        for name in tasks.__all__:
+            assert getattr(tasks, name).__name__ == name, f"{tasks.__name__}.{name}"
 
 
 def test_a_package_without_a_module_level_server(

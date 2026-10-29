@@ -36,9 +36,13 @@ its shape; `build_all` checks what needs the packages and builds the servers. On
 without a list mounts the package's own server object; a group or a listed endpoint is an
 `MCPServer` named `xippios-<endpoint>` that the host builds with `register_tasks` under
 the package's slug, `MCP_CAPS` cut to the kept tasks, read and write never mixed. Every
-refusal is core's `ConfigError` naming the file, the endpoint and the key, never a value:
-`token_env` names a variable ending in `_TOKEN`, which the host reads once, when `--http`
-starts. An optional `[http]` table names `allowed_hosts` and `allowed_origins`.
+refusal is core's `ConfigError` naming the file, the endpoint and the key; it repeats
+slugs, task names and a package's `server.name`, but never the value of `token_env`,
+`auth` or `allow_remote`, nor the value of an unknown key. A `ValueError` from
+`register_tasks` is re-raised as `servers.BuildError`, a `ValueError`, with the file, the
+endpoint and the package prefixed. `token_env` names a variable ending in `_TOKEN`,
+which the host reads once, when `--http` starts. An optional `[http]` table names
+`allowed_hosts` and `allowed_origins`.
 
 ### The transports and the bearer
 

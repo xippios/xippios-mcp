@@ -82,8 +82,9 @@ auth = "none"
   the host refuses a group that mixes them.
 - `include` and `exclude` are keyed by package slug and name exact task names, a task
   function's `__name__` (`get_counts`, not `usda_nass_get_counts`); a package takes one
-  of the two. A name that is no tool of the package is refused, a task in the package's
-  `BULK_TASKS` among them, since a bulk task is Python-only and no tool.
+  of the two, and an empty list is refused. A name that is no tool of the package is
+  refused, a task in the package's `BULK_TASKS` among them, since a bulk task is
+  Python-only and no tool.
 - `auth` is `"bearer"` by default, or `"none"`. With the bearer, `token_env` names the
   environment variable that holds the token, a name ending in `_TOKEN`
   (`XIPPIOS_MCP_<ENDPOINT>_TOKEN`), and the token itself stays in the environment, never
@@ -100,7 +101,8 @@ xippios-mcp --config host.toml
 ```
 
 It loads the file, builds every endpoint and prints one line per endpoint; for
-[`docs/host.example.toml`](docs/host.example.toml), the sample above:
+[`docs/host.example.toml`](docs/host.example.toml), the sample above, with the packages
+at the lower bounds:
 
 ```text
 agriculture: read, 46 tools of usda-nass, usda-psd, comtrade
