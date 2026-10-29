@@ -11,11 +11,12 @@ claude.ai's OAuth sign-in needs an authorization server in front of the host, ou
 
 The token is read once, when ``--http`` starts, from the environment variable the
 endpoint's ``token_env`` names (conventions §7); a missing or empty variable is a
-``ConfigError``. The wrapper holds the token's SHA-256 digest, never the token, and
-compares the digest of the given token with ``hmac.compare_digest``, so the comparison
-takes the same time whatever the given token is. The ``Authorization`` header is
-removed before the request reaches the endpoint's app, so no package code and no log
-behind the bearer holds it.
+``ConfigError``, and so is a value with leading or trailing whitespace, which a given
+token, stripped of its surrounding blanks, could never match. The wrapper holds the
+token's SHA-256 digest, never the token, and compares the digest of the given token
+with ``hmac.compare_digest``, so the comparison takes the same time whatever the given
+token is. The ``Authorization`` header is removed before the request reaches the
+endpoint's app, so no package code and no log behind the bearer holds it.
 """
 
 import hashlib
@@ -43,8 +44,9 @@ def token_digest(endpoint: Endpoint) -> bytes:
             variable, e.g. ``"XIPPIOS_MCP_AGRICULTURE_TOKEN"``.
 
     Raises:
-        ConfigError: The variable is unset or empty; the message names the file, the
-            endpoint and the variable, never a value.
+        ConfigError: The variable is unset or empty, or its value has leading or
+            trailing whitespace; the message names the file, the endpoint and the
+            variable, never a value.
     """
     name = endpoint.token_env
     if name is None:
@@ -60,6 +62,15 @@ def token_digest(endpoint: Endpoint) -> bytes:
             ["endpoints", endpoint.name, "token_env"],
             f"{name} is not set or is empty; set it to the endpoint's bearer token in the "
             "environment before serving it over --http",
+        )
+    if token != token.strip():
+        # The value is never shown: it is the token (conventions §7).
+        raise refusal(
+            endpoint.path,
+            ["endpoints", endpoint.name, "token_env"],
+            f"{name} has leading or trailing whitespace, which no token a client sends "
+            "can match, since the bearer strips the blanks around the token it is given; "
+            "set it without them",
         )
     return hashlib.sha256(token.encode()).digest()
 

@@ -25,7 +25,7 @@ from starlette.applications import Starlette
 from xippios.core import ConfigError
 from xippios.core.mcp import cli as core_cli
 
-from xippios.mcp.app import LOOPBACK_HOSTS, build_app, serve_http, transport_security
+from xippios.mcp.app import _LOOPBACK_HOSTS, build_app, serve_http, transport_security
 from xippios.mcp.config import HttpConfig, load_config
 from xippios.mcp.servers import build_all
 
@@ -236,7 +236,7 @@ WRITE_NONE = '[endpoints.accounting-write]\npackages = ["cashctrl:write"]\nauth 
 
 def test_the_loopback_hosts_are_cores() -> None:
     """The host's copy (queue row 282) stays core's private list, exactly."""
-    assert LOOPBACK_HOSTS == core_cli._LOOPBACK_HOSTS
+    assert _LOOPBACK_HOSTS == core_cli._LOOPBACK_HOSTS
 
 
 def test_an_open_write_endpoint_beyond_loopback_is_refused(tmp_path: Path) -> None:
@@ -248,7 +248,7 @@ def test_an_open_write_endpoint_beyond_loopback_is_refused(tmp_path: Path) -> No
     assert 'auth = "bearer"' in message
 
 
-@pytest.mark.parametrize("host", LOOPBACK_HOSTS)
+@pytest.mark.parametrize("host", _LOOPBACK_HOSTS)
 def test_an_open_write_endpoint_on_loopback(tmp_path: Path, host: str) -> None:
     assert isinstance(_app(tmp_path, WRITE_NONE, host=host), Starlette)
 
@@ -272,6 +272,17 @@ def test_a_bearer_write_endpoint_beyond_loopback(
 def test_an_open_read_endpoint_beyond_loopback(tmp_path: Path) -> None:
     text = '[endpoints.open]\npackages = ["usda-nass"]\nauth = "none"\n'
     assert isinstance(_app(tmp_path, text, host="0.0.0.0"), Starlette)
+
+
+def test_the_loopback_check_runs_before_a_token_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bearer endpoint whose variable is unset does not hide the loopback refusal."""
+    monkeypatch.delenv(VARIABLE, raising=False)
+    text = f'[endpoints.agriculture]\npackages = ["usda-nass"]\ntoken_env = "{VARIABLE}"\n\n'
+    message = _refused(tmp_path, f"{text}{WRITE_NONE}", host="0.0.0.0")
+    assert message.startswith(f"{tmp_path / 'host.toml'}: endpoints.accounting-write.auth: ")
+    assert VARIABLE not in message
 
 
 def test_the_loopback_match_is_exact(tmp_path: Path) -> None:

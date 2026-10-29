@@ -40,14 +40,16 @@ from xippios.mcp.auth import Bearer, token_digest
 from xippios.mcp.config import HostConfig, HttpConfig, refusal
 from xippios.mcp.servers import Built
 
-__all__ = ["LOOPBACK_HOSTS", "MCP_PATH", "build_app", "serve_http", "transport_security"]
+__all__ = ["MCP_PATH", "build_app", "serve_http", "transport_security"]
 
 # A private copy of core's _LOOPBACK_HOSTS (xippios.core.mcp.cli), as sdk-google-mail
-# carries one (ADR-0025, D-a): queue row 282 brings the loopback option into core 0.4.0
-# with the host as its second consumer (ADR-0023, decision 4). Exactly the mcp SDK's own
-# list (mcp 2.3.0): for these hosts, without transport_security, the SDK turns on its
-# DNS-rebinding protection (Host and Origin checks), which is why the match is exact.
-LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+# carries one (ADR-0025, D-a). Queue row 282 brings the loopback option into core 0.4.0,
+# the host its second consumer, which is ADR-0023 decision 2's entry rule; until then
+# each consumer keeps its copy with this comment naming the row (ADR-0023, decision 4).
+# Exactly the mcp SDK's own list (mcp 2.3.0): for these hosts, without
+# transport_security, the SDK turns on its DNS-rebinding protection (Host and Origin
+# checks), which is why the match is exact.
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 """The bind hosts an ``auth = "none"`` write endpoint is served on without ``allow_remote``."""
 
 MCP_PATH = "/mcp"
@@ -123,7 +125,7 @@ def build_app(config: HostConfig, built: Mapping[str, Built], *, host: str) -> S
 
 
 def _check_loopback(config: HostConfig, built: Mapping[str, Built], host: str) -> None:
-    if host in LOOPBACK_HOSTS:
+    if host in _LOOPBACK_HOSTS:
         return
     for name, endpoint in config.endpoints.items():
         if endpoint.auth == "none" and built[name].write and not endpoint.allow_remote:
@@ -132,7 +134,7 @@ def _check_loopback(config: HostConfig, built: Mapping[str, Built], host: str) -
                 ["endpoints", name, "auth"],
                 f'is "none" on a write server, which then carries no authentication, and '
                 f"--host {host} is beyond loopback; serve it on a loopback --host "
-                f'({", ".join(LOOPBACK_HOSTS)}), set auth = "bearer" with a token_env, or '
+                f'({", ".join(_LOOPBACK_HOSTS)}), set auth = "bearer" with a token_env, or '
                 "set allow_remote = true and put it behind a gateway",
             )
 

@@ -99,7 +99,7 @@ def _load(endpoint: Endpoint, ref: PackageRef) -> Package:
 def _package_built(endpoint: Endpoint, package: Package) -> Built:
     # The package's own object, shared by every endpoint that mounts it alone: its
     # streamable_http_app replaces the server's one session manager, so the HTTP
-    # transport (the next step) refuses mounting one package-built server on two
+    # transport (`app.build_app`) refuses mounting one package-built server on two
     # endpoints.
     server = package.server
     if is_write_server(server) != package.ref.write:

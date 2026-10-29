@@ -71,6 +71,7 @@ dev = [
   "anyio>=4",
   "detect-secrets>=1.5",
   "xippios-core[testing]~=0.3.0",
+  "httpx2>=2.16.0",
 ]
 
 [build-system]

@@ -110,7 +110,8 @@ accounting-write: write, 11 tools of cashctrl
 ```
 
 A key, package or task the host refuses stops it with exit status 2 and a message that
-names the file, the endpoint and the key.
+names the file, the endpoint and the key. The list runs neither the mounted-once check
+nor the loopback check of Serving, which need `--http` and its `--host`.
 
 A server the host builds carries none of the packages' own instructions: its
 instructions are one sentence naming its packages and their tool counts. No endpoint

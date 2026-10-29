@@ -68,6 +68,23 @@ def test_a_missing_or_empty_variable_is_refused(
     assert f"{VARIABLE} is not set or is empty" in message
 
 
+@pytest.mark.parametrize(
+    "value",
+    [f" {TOKEN}", f"{TOKEN}\n", f"\t{TOKEN} ", "   "],
+    ids=["leading", "trailing newline", "both", "blanks only"],
+)
+def test_a_value_with_surrounding_whitespace_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv(VARIABLE, value)
+    with pytest.raises(ConfigError) as refused:
+        token_digest(_endpoint(tmp_path))
+    message = str(refused.value)
+    assert message.startswith(f"{tmp_path / 'host.toml'}: endpoints.agriculture.token_env: ")
+    assert f"{VARIABLE} has leading or trailing whitespace" in message
+    assert TOKEN not in message
+
+
 def test_an_endpoint_without_a_bearer_has_no_digest(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match=r"endpoints\.agriculture\.auth: is \"none\""):
         token_digest(_endpoint(tmp_path, 'auth = "none"'))
