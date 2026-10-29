@@ -19,7 +19,7 @@ dist
 build
 **/*.egg-info
 
-# local secrets are never files, but belt and braces
+# local secrets are never in the repository, but belt and braces
 **/.env
 **/.env.*
 **/.envrc

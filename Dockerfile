@@ -13,7 +13,7 @@
 # 0.0.0.0 on port 8000, so every endpoint is remote: give each a bearer. Every token comes
 # from the environment by the name the config's token_env gives it; the image holds no
 # config, key or token.
-# Both base images are pinned by digest, the tag in a comment, and bumped deliberately.
+# Both images are pinned by digest, the tag in a comment, and bumped deliberately.
 
 # python:3.12-slim, 2026-10-28 (Dockerfile comments take a line of their own)
 FROM python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159 AS builder
@@ -33,19 +33,21 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --extra all --no-editable --no-install-project
 
 # Then the project itself, installed into the venv rather than linked to src/, so the
-# final stage needs the venv alone.
+# final stage needs the venv alone. uv's empty .venv/.lock goes: it is mode 666, the one
+# path in the venv the image's user could write.
 COPY README.md LICENSE ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --extra all --no-editable
+    uv sync --locked --no-dev --extra all --no-editable \
+    && rm -f /app/.venv/.lock
 
 
 # python:3.12-slim, 2026-10-28, the same base as the builder's
 FROM python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159
 
 # The user exists by name too, so `xippios` resolves inside the container.
-RUN groupadd --system --gid 10001 xippios \
-    && useradd --system --uid 10001 --gid xippios --no-create-home \
+RUN groupadd --gid 10001 xippios \
+    && useradd --uid 10001 --gid xippios --no-create-home \
        --home-dir /nonexistent --shell /usr/sbin/nologin xippios
 
 COPY --from=builder /app/.venv /app/.venv

@@ -191,10 +191,12 @@ decision 1), since the template renders sources only:
   `.claude/family.md`, the commands but `release-prep`, `scripts/`, `docs/upstream/`,
   the package's modules but `__init__.py` and `_version.py`, and the family, task and
   live tests.
-- Changed since: `.github/workflows/ci.yml` differs from template v0.3.0 by the `docker`
-  job, which builds the image, and by the `ci` aggregator's `needs: [test, docker]`,
-  which requires it as it requires the test matrix (gap, row 313 (c)). A template
-  release's `ci.yml` is ported with the job kept.
+- Changed since: `.github/workflows/ci.yml` differs from template v0.3.0 in three
+  places, which a port of a template release's `ci.yml` keeps (gap, row 313 (c)): the
+  `docker` job, which builds the image and runs `--help`; the `ci` aggregator's
+  `needs: [test, docker]`, with its check of `needs.docker.result` beside the test
+  matrix's; and the aggregator's step, renamed "Require the whole matrix and the image
+  build to pass".
 
 There is no copier answers file, so `copier update` does not run here: a template
 release is ported by hand until the host flavour of the scaffold (queue row 284) exists.
