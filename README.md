@@ -9,8 +9,8 @@ token by default; the secrets stay in the environment, never in the config file.
 
 `xippios-mcp --config <path>` checks a config, builds every endpoint's server and lists
 the endpoints; `--stdio <endpoint>` serves one endpoint on stdio, and `--http` serves
-every endpoint over streamable HTTP, each with its bearer (see Serving). The Docker
-image comes with a later step.
+every endpoint over streamable HTTP, each with its bearer (see Serving). A Docker image,
+built from this repository, serves them from a container (see Docker).
 
 ## Install
 
@@ -218,6 +218,55 @@ request without `Origin` passes. `"<host>:*"` accepts any port, so add `"127.0.0
 to keep clients that connect directly. Both keys are optional, but `allowed_origins`
 needs `allowed_hosts`. Without the table, a host bound beyond loopback gets no `Host`
 check.
+
+## Docker
+
+The repository builds an image of the host with every package of `all`, at the versions
+`uv.lock` pins, the set the tests run against. 0.1.0 publishes no image to a registry:
+build it from a checkout.
+
+```bash
+docker build -t xippios-mcp .
+```
+
+The image runs `xippios-mcp --config /etc/xippios-mcp/host.toml --http --host 0.0.0.0
+--port 8000` as the non-root user `xippios` (uid 10001), and holds no config, key or
+token. The operator mounts the config, a file that user can read, and passes every
+token by its variable's name, so the value comes from the operator's environment and
+stays out of the command line. For a config with one bearer endpoint:
+
+```toml
+[endpoints.agriculture]
+packages = ["usda-nass", "usda-psd", "comtrade"]
+auth = "bearer"
+token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"
+```
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v "$PWD/host.toml:/etc/xippios-mcp/host.toml:ro" \
+  -e XIPPIOS_MCP_AGRICULTURE_TOKEN \
+  xippios-mcp
+```
+
+serves it at `http://127.0.0.1:8000/agriculture/mcp`. The variables the packages read
+themselves, their keys among them, are passed the same way, by name; each package's
+README names its own. Arguments after the image name replace the image's own, so
+
+```bash
+docker run --rm -v "$PWD/host.toml:/etc/xippios-mcp/host.toml:ro" xippios-mcp \
+  --config /etc/xippios-mcp/host.toml
+```
+
+checks the mounted config and lists its endpoints without serving them.
+
+Inside the container the host binds `0.0.0.0`, beyond loopback, so every endpoint is
+remote, whichever interface `-p` publishes the port on: give every endpoint the bearer.
+An `auth = "none"` write endpoint is refused there unless it sets `allow_remote = true`
+(see The loopback rule), and then nothing authenticates it but a gateway in front;
+prefer the bearer. Beyond loopback the mcp SDK checks no `Host` or `Origin` header, so
+behind a reverse proxy the config's `[http]` table names the values to accept (see
+Behind a reverse proxy).
 
 ## Licence
 

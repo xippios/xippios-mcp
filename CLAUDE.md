@@ -4,8 +4,8 @@
 tools of the family's packages on one server, by endpoint and group (ADR-0026). It is a
 public package that is no source: no tasks, no `api/`, no fixtures and no
 `docs/upstream/` snapshot (ADR-0026, decision 1), and the one repository, package and
-session of the family not named `sdk-*`. The config, the mount, the transports and the
-bearer are here; the image comes in a later step.
+session of the family not named `sdk-*`. The config, the mount, the transports, the
+bearer and the Docker image are here.
 
 ## What this package is
 
@@ -64,6 +64,21 @@ Bearer realm="xippios-mcp"` (`error="invalid_token"` for a wrong token) and no
 `resource_metadata` (ADR-0026, decision 10), and strips the `Authorization` header
 before the endpoint's app (gap, row 310).
 
+### The image
+
+`Dockerfile` builds in two stages on `python:3.12-slim`, pinned by digest with the tag in
+a comment above it, and takes uv from its release image `ghcr.io/astral-sh/uv`, pinned
+the same way; both are bumped deliberately (conventions §13's pinning rule, read for
+images; gap, row 313 (a)). The builder installs this checkout with `uv sync --locked
+--no-dev --extra all --no-editable`, the tested set (Johannes, 2026-10-29, G5 question 5
+of the 0.1.0 briefing), and the final stage carries the venv alone: it runs as the
+non-root user `xippios`, uid and gid 10001, which `USER 10001:10001` names by number so
+that a Kubernetes `runAsNonRoot` check can verify it without a `runAsUser`, reads
+`/etc/xippios-mcp/host.toml`, which the operator mounts, serves `--http` on
+`0.0.0.0:8000` and takes every token from the environment (gap, row 313 (b)). `ci.yml`'s
+`docker` job builds it and runs `--help`; 0.1.0 pushes no image to a registry (ADR-0026,
+decision 2).
+
 ### Core internals
 
 The host takes `register_tasks`, `is_write_server` and `quiet_request_logging` from
@@ -110,9 +125,15 @@ tests/
                    refusals, serve_http with uvicorn's Server.run stubbed
   test_cli.py      --stdio, --http (serve_http stubbed), the endpoint lines and exit
                    status 2; no test binds a port
-.github/workflows/ ci.yml (the required ci check, with the CHANGELOG step), publish.yml
-                   (the release train: tag, build, PyPI), gates.yml (the merge gates as
-                   jobs, off until GATES_CALLER is 1)
+Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --locked` of
+                   `all`, the non-root user xippios as USER 10001:10001, --http on
+                   0.0.0.0:8000
+.dockerignore      keeps .git, .venv, tests, .worktrees, the caches and any .env or
+                   .envrc out of the build context
+.github/workflows/ ci.yml (the required ci check: the test matrix with the CHANGELOG step,
+                   and the docker job, which builds the image), publish.yml (the release
+                   train: tag, build, PyPI), gates.yml (the merge gates as jobs, off until
+                   GATES_CALLER is 1)
 .claude/commands/  release-prep
 ```
 
@@ -143,6 +164,8 @@ uv run pytest                      # offline; no tool reaches an upstream
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 uv run pre-commit run --all-files
+
+docker build -t xippios-mcp .      # the image, as ci.yml's docker job builds it
 ```
 
 The offline run is core's plugin's (ADR-0013): it refuses the network in every test not
@@ -168,6 +191,12 @@ decision 1), since the template renders sources only:
   `.claude/family.md`, the commands but `release-prep`, `scripts/`, `docs/upstream/`,
   the package's modules but `__init__.py` and `_version.py`, and the family, task and
   live tests.
+- Changed since: `.github/workflows/ci.yml` differs from template v0.3.0 in three
+  places, which a port of a template release's `ci.yml` keeps (gap, row 313 (c)): the
+  `docker` job, which builds the image and runs `--help`; the `ci` aggregator's
+  `needs: [test, docker]`, with its check of `needs.docker.result` beside the test
+  matrix's; and the aggregator's step, renamed "Require the whole matrix and the image
+  build to pass".
 
 There is no copier answers file, so `copier update` does not run here: a template
 release is ported by hand until the host flavour of the scaffold (queue row 284) exists.
@@ -207,6 +236,8 @@ release is ported by hand until the host flavour of the scaffold (queue row 284)
   header before the endpoint's app, and a refusal names the variable, never its value.
 - Never write a key or a token into a file or a commit: the secrets stay in the
   environment (conventions §7; ADR-0026, decision 2).
+- Never put a config, a key or a token into the image: the operator mounts the config
+  and passes every variable by name (gap, row 313 (b)).
 - Never add a task, an endpoint wrapper or a fixture here, and never rename or re-map a
   package's tools: the host serves what the packages define (ADR-0026, decision 1;
   ADR-0003).

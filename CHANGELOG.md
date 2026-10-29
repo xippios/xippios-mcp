@@ -32,3 +32,9 @@ All notable changes to this project are documented here. The format follows
   `allow_remote = true`; a package's own server serves one HTTP endpoint; and an
   optional `[http]` table names the `Host` and `Origin` values accepted behind a reverse
   proxy.
+- The Docker image: `docker build -t xippios-mcp .` installs this checkout with
+  `uv.lock`, every package of `all`, on `python:3.12-slim` and uv 0.13.6, both pinned by
+  digest. It runs as the non-root user `xippios`, reads the config the operator mounts
+  at `/etc/xippios-mcp/host.toml`, serves `--http` on `0.0.0.0:8000`, and takes every
+  token from the environment by name. CI builds the image and runs `--help` in a
+  `docker` job that the `ci` check requires; no image is published to a registry.
