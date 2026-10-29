@@ -10,9 +10,9 @@ All notable changes to this project are documented here. The format follows
 
 - Scaffold, by hand from [sdk-template](https://github.com/xippios/sdk-template) v0.3.0:
   the package `xippios.mcp` on `xippios-core[mcp]` 0.3, one extra per source package with
-  a lower bound and `all` their union, the `xippios-mcp` entry point with `--config`,
-  which serves nothing yet, the host's package checks, CI and the release train, in
-  which a release PR's merge tags and publishes.
+  a lower bound and `all` their union, the `xippios-mcp` entry point with `--config`, the
+  host's package checks, CI and the release train, in which a release PR's merge tags
+  and publishes.
 - The config, its startup checks and the mount: `xippios-mcp --config <path>` reads a
   TOML file of `[endpoints.<name>]` tables, checks every key, builds each endpoint's
   server and prints one line per endpoint; a refusal names the file, the endpoint and

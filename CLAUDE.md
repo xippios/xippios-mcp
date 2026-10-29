@@ -54,9 +54,9 @@ it mounts, it refuses an `auth = "none"` write endpoint (core's `is_write_server
 bind host beyond loopback without `allow_remote = true` (ADR-0026, decision 5; queue row
 296), and a package's own server on two endpoints, since `streamable_http_app` replaces
 the server's one session manager (gap, row 310 (d)). The loopback hosts are a private
-copy of core's `_LOOPBACK_HOSTS`, `app.LOOPBACK_HOSTS`, with a comment naming queue row
-282, as sdk-google-mail carries one (ADR-0023, decision 4); a test keeps it equal to
-core's. The `[http]` table becomes the SDK's `TransportSecuritySettings`; without it the
+copy of core's `_LOOPBACK_HOSTS`, `app._LOOPBACK_HOSTS`, with a comment naming queue row
+282, as sdk-google-mail carries one (ADR-0023, decisions 2 and 4); a test keeps it equal
+to core's. The `[http]` table becomes the SDK's `TransportSecuritySettings`; without it the
 SDK's default for the bind host applies. A bearer endpoint is wrapped in `auth.Bearer`,
 a pure ASGI wrapper that holds the token's SHA-256 digest (`auth.token_digest` reads the
 variable once), compares with `hmac.compare_digest`, answers 401 with `WWW-Authenticate:
