@@ -197,9 +197,10 @@ authenticate. A read endpoint with `auth = "none"`, and every bearer endpoint, i
 on any host.
 
 A read server that its package holds to loopback, as sdk-google-mail holds its own, is
-not held there by the host's 0.1.0: the host reads the packages' loopback option from
-its 0.2.0 on (queue row 282). Until then, keep an `auth = "none"` endpoint of such a
-package on a loopback `--host`, or give it the bearer.
+not held there by the host's 0.1.0: the packages' loopback-only option comes with
+`xippios-core`'s next minor, and the host reads it from its own 0.2.0 on. Until then,
+keep an `auth = "none"` endpoint of such a package on a loopback `--host`, or give it
+the bearer.
 
 ### Behind a reverse proxy
 
