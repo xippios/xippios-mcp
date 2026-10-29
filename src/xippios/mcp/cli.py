@@ -29,7 +29,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Parse the command line and run the host.
+    """Parse the command line; until the config loader lands, stop with exit status 2.
+
+    ``--help`` exits 0 and a missing ``--config`` exits 2, as argparse does; with
+    ``--config`` the host stops with exit status 2 too, since nothing is served yet.
 
     Args:
         argv: Arguments without the program name, e.g. ``["--config", "host.toml"]``;
