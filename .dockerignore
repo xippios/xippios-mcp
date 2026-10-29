@@ -1,0 +1,33 @@
+# The build context: the Dockerfile copies pyproject.toml, uv.lock, README.md, LICENSE and
+# src/ only; the rest stays out of the context sent to the builder.
+
+# version control and worktrees
+.git
+.worktrees
+
+# environments and caches
+.venv
+**/__pycache__
+**/*.py[cod]
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.hypothesis
+
+# build artefacts
+dist
+build
+**/*.egg-info
+
+# local secrets are never files, but belt and braces
+**/.env
+**/.env.*
+**/.envrc
+**/.envrc.*
+
+# not part of the image
+tests
+.github
+.claude
+.idea
+.vscode
