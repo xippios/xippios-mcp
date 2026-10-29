@@ -6,13 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-29
+
+The first release of xippios-mcp, the self-hosted MCP host of the xippios SDK family. It
+serves the MCP tools of the family's packages from one process, by endpoint and group:
+an endpoint serves one package's own server, or a server the host builds from several
+packages' tools, never read and write tools together. It runs on stdio, or on streamable
+HTTP with a bearer token per endpoint, and a Docker image built from the repository
+serves it from a container.
+
 ### Added
 
-- Scaffold, by hand from [sdk-template](https://github.com/xippios/sdk-template) v0.3.0:
-  the package `xippios.mcp` on `xippios-core[mcp]` 0.3, one extra per source package with
-  a lower bound and `all` their union, the `xippios-mcp` entry point with `--config`, the
-  host's package checks, CI and the release train, in which a release PR's merge tags
-  and publishes.
+- The scaffold, by hand from [sdk-template](https://github.com/xippios/sdk-template)
+  v0.3.0: the package `xippios.mcp` on `xippios-core[mcp]` 0.3, the `xippios-mcp` entry
+  point with `--config`, the host's package checks, CI, and the release workflow, in
+  which the merge of a release pull request tags the version and publishes it to PyPI.
+- One extra per source package, each with a lower bound and no upper bound, so that the
+  host installs every package at its latest release, and `all` their union: `cashctrl`
+  (`xippios-cashctrl>=0.3.0`), `comtrade` (`xippios-comtrade>=0.2.0`), `eurostat`
+  (`xippios-eurostat>=0.2.0`), `faostat` (`xippios-faostat>=0.1.0`), `usda-esmis`
+  (`xippios-usda-esmis>=0.2.0`), `usda-esr` (`xippios-usda-esr>=0.2.0`), `usda-gats`
+  (`xippios-usda-gats>=0.2.0`), `usda-nass` (`xippios-usda-nass>=0.2.0`) and `usda-psd`
+  (`xippios-usda-psd>=0.3.0`). `xippios-usda-wasde` joins in a later release, once its
+  0.2.0 ships: its 0.1.1 needs `xippios-usda-esmis` below 0.2, so it does not install
+  beside the other nine.
 - The config, its startup checks and the mount: `xippios-mcp --config <path>` reads a
   TOML file of `[endpoints.<name>]` tables, checks every key, builds each endpoint's
   server and prints one line per endpoint; a refusal names the file, the endpoint and
@@ -27,11 +44,11 @@ All notable changes to this project are documented here. The format follows
   `--host` (default `127.0.0.1`) and `--port` (default 8000). An endpoint with
   `auth = "bearer"` answers a missing or wrong token with `401` and
   `WWW-Authenticate: Bearer realm="xippios-mcp"`; the token is read once from the
-  variable `token_env` names, and an unset or empty one stops the host with exit status
-  2. An `auth = "none"` write endpoint is served on a loopback host only, unless it sets
-  `allow_remote = true`; a package's own server serves one HTTP endpoint; and an
-  optional `[http]` table names the `Host` and `Origin` values accepted behind a reverse
-  proxy.
+  variable `token_env` names, and an unset or empty one, or one with leading or trailing
+  whitespace, stops the host with exit status 2. An `auth = "none"` write endpoint is
+  served on a loopback host only, unless it sets `allow_remote = true`; a package's own
+  server serves one HTTP endpoint; and an optional `[http]` table names the `Host` and
+  `Origin` values accepted behind a reverse proxy.
 - The Docker image: `docker build -t xippios-mcp .` installs this checkout with
   `uv.lock`, every package of `all`, on `python:3.12-slim` and uv 0.13.6, both pinned by
   digest. It runs as the non-root user `xippios`, reads the config the operator mounts
