@@ -17,7 +17,7 @@ from pathlib import Path
 from xippios.core import ConfigError
 
 from xippios.mcp.config import load_config
-from xippios.mcp.servers import build_all
+from xippios.mcp.servers import BuildError, build_all
 
 __all__ = ["main"]
 
@@ -57,7 +57,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     try:
         config = load_config(args.config)
         built = build_all(config)
-    except (ConfigError, ValueError) as exc:
+    except (ConfigError, BuildError) as exc:
         parser.error(str(exc))
     for name, endpoint in config.endpoints.items():
         server = built[name]

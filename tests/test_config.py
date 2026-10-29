@@ -245,6 +245,12 @@ REFUSALS = [
         "includes no task",
     ),
     (
+        "an empty exclude list",
+        _endpoint(f"{NASS}\nexclude = {{ usda-nass = [] }}"),
+        "endpoints.agriculture.exclude.usda-nass",
+        "excludes no task",
+    ),
+    (
         "a task named twice in a list",
         _endpoint(f'{NASS}\nexclude = {{ usda-nass = ["get_counts", "get_counts"] }}'),
         "endpoints.agriculture.exclude.usda-nass",

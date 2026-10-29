@@ -18,8 +18,11 @@ The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
 slugs, the task names and the servers are checked when the endpoints are built
 (``xippios.mcp.servers``). It reads no environment variable: ``token_env`` names one,
 and the bearer reads it when it serves (conventions §7). Every refusal is a
-``ConfigError`` naming the file, the endpoint and the key, never a value a key might
-hold.
+``ConfigError`` naming the file, the endpoint and the key. A message repeats slugs and
+task names, and from the build a package's ``server.name``, but never the value of
+``token_env``, ``auth`` or ``allow_remote``, nor the value of an unknown key. The build
+re-raises a refusal of core's ``register_tasks`` as ``BuildError``, a ``ValueError``,
+with the file, the endpoint and the package prefixed.
 """
 
 import json
@@ -263,8 +266,13 @@ def _lists(path: Path, key: list[str], value: Any, slugs: list[str]) -> dict[str
             )
         if not isinstance(names, list) or not all(isinstance(n, str) and n for n in names):
             raise refusal(path, [*key, slug], 'must be a list of task names, e.g. ["get_counts"]')
-        if not names and key[-1] == "include":
-            raise refusal(path, [*key, slug], "includes no task; leave the package out instead")
+        if not names:
+            problem = (
+                "includes no task; leave the package out instead"
+                if key[-1] == "include"
+                else "excludes no task; leave the list out instead"
+            )
+            raise refusal(path, [*key, slug], problem)
         twice = sorted({n for n in names if names.count(n) > 1})
         if twice:
             raise refusal(path, [*key, slug], f"{twice[0]}: named twice")
