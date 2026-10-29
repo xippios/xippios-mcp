@@ -10,10 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 The first release of xippios-mcp, the self-hosted MCP host of the xippios SDK family. It
 serves the MCP tools of the family's packages from one process, by endpoint and group:
-an endpoint serves one package's own server, or a server the host builds from several
-packages' tools, never read and write tools together. It runs on stdio, or on streamable
-HTTP with a bearer token per endpoint, and a Docker image built from the repository
-serves it from a container.
+an endpoint serves one package's own server, or a server the host builds from one or
+several packages' tools, never read and write tools together. It runs on stdio, or on
+streamable HTTP, each endpoint with its own bearer token or none, and a Docker image
+built from the repository serves it from a container.
 
 ### Added
 
