@@ -159,10 +159,11 @@ An endpoint with `auth = "bearer"` answers a request without the token with `401
 `WWW-Authenticate: Bearer realm="xippios-mcp"`, and one with a wrong token with
 `error="invalid_token"` added; such a request never reaches the endpoint. The token is
 the value of the variable `token_env` names, read once when `--http` starts: an unset or
-empty variable stops the host with exit status 2. The host keeps the token's SHA-256
-digest only, compares in constant time, and never logs the token or the `Authorization`
-header. A random token will do, `openssl rand -hex 32` for instance, set in the
-environment of the host and of the client.
+empty variable stops the host with exit status 2, and so does a value with leading or
+trailing whitespace, which no token a client sends can match. The host keeps the token's
+SHA-256 digest only, compares in constant time, and never logs the token or the
+`Authorization` header. A random token will do, `openssl rand -hex 32` for instance, set
+in the environment of the host and of the client.
 
 In Claude Code:
 
