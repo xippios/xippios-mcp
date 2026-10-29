@@ -7,8 +7,9 @@ packages' tools on one endpoint, never read and write tools together. It runs on
 locally and on streamable HTTP on a server, each endpoint with its own auth, a bearer
 token by default; the secrets stay in the environment, never in the config file.
 
-The config, the transports and the bearer come with the next steps: for now
-`xippios-mcp --config <path>` stops with exit status 2 and serves nothing.
+The config and the mount are here: `xippios-mcp --config <path>` checks the config,
+builds every endpoint's server and lists the endpoints. The transports and the bearer
+come with the next steps; until then the host serves nothing.
 
 ## Install
 
@@ -47,9 +48,72 @@ does not run. The host therefore serves the ceilings the packages keep in Python
 split `usda_nass_get_data` spans up to 20 years, at up to two keyed calls a year (the
 entry point's default is 5 years), and `usda_gats_get_census_export_series`,
 `usda_gats_get_census_import_series` and `usda_gats_get_census_reexport_series` span up
-to 60 months, at one call a month (the entry point's default is 24 months). The next
-step adds an `exclude` list per endpoint, with which an operator who wants fewer calls
-per tool call leaves those tools out.
+to 60 months, at one call a month (the entry point's default is 24 months). An operator
+who wants fewer calls per tool call leaves those tools out with an endpoint's `exclude`
+list (see Configuration).
+
+## Configuration
+
+The host reads one TOML file that names its endpoints. Each `[endpoints.<name>]` table
+is one endpoint, which the HTTP transport serves at `/<name>/mcp`:
+
+```toml
+[endpoints.agriculture]                        # served at /agriculture/mcp
+packages = ["usda-nass", "usda-psd", "comtrade"]
+exclude = { usda-nass = ["get_counts"] }       # or include = { ... }; exact task names
+auth = "bearer"                                # the default; or "none"
+token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"    # a name ending in _TOKEN, never a value
+allow_remote = false                           # the default
+
+[endpoints.accounting-write]
+packages = ["cashctrl:write"]
+auth = "none"
+```
+
+- An endpoint that names one package and no list serves that package's own server, as
+  the package builds it: `xippios.<package>.mcp.server`, or `mcp_write.server` for
+  `<slug>:write`, with its instructions and result caps.
+- A group, several packages, or an endpoint with an `include` or `exclude` list is a
+  server the host builds, named `xippios-<endpoint>`: each package's tools under their
+  own names (`usda_nass_get_data`), with the package's result caps for the tools it
+  keeps.
+- Read and write never mix: an endpoint's packages are all `<slug>:write` or none, and
+  the host refuses a group that mixes them.
+- `include` and `exclude` are keyed by package slug and name exact task names, a task
+  function's `__name__` (`get_counts`, not `usda_nass_get_counts`); a package takes one
+  of the two, and an empty list is refused. A name that is no tool of the package is
+  refused, a task in the package's `BULK_TASKS` among them, since a bulk task is
+  Python-only and no tool.
+- `auth` is `"bearer"` by default, or `"none"`. With the bearer, `token_env` names the
+  environment variable that holds the token, a name ending in `_TOKEN`
+  (`XIPPIOS_MCP_<ENDPOINT>_TOKEN`), and the token itself stays in the environment, never
+  in the file. `allow_remote` is `false` by default. The host checks the shape of the
+  three now and reads no variable; the bearer and the loopback rule come with the HTTP
+  transport.
+
+Check a config before serving it:
+
+```bash
+xippios-mcp --config host.toml
+```
+
+It loads the file, builds every endpoint and prints one line per endpoint; for
+[`docs/host.example.toml`](docs/host.example.toml), the sample above, with the packages
+at the lower bounds:
+
+```text
+agriculture: read, 46 tools of usda-nass, usda-psd, comtrade
+accounting-write: write, 11 tools of cashctrl
+```
+
+A key, package or task the host refuses stops it with exit status 2 and a message that
+names the file, the endpoint and the key.
+
+A server the host builds carries none of the packages' own instructions: its
+instructions are one sentence naming its packages and their tool counts. No endpoint
+takes a package's command-line options, such as cashctrl's `--org` lock or the ceilings
+above, since the host runs no package's entry point. The package contract of the next
+template release gives the host what it needs to carry them, in its 0.2.0.
 
 ## Licence
 

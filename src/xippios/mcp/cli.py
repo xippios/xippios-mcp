@@ -1,13 +1,23 @@
 """The ``xippios-mcp`` entry point: the host's command line.
 
-The host reads a config file that names its endpoints and groups (ADR-0026, decision 2).
-The config loader, the transports and the bearer come in the next steps; until then
-``--config`` stops with exit status 2, so nothing pretends to serve.
+The host reads a config file that names its endpoints and groups (ADR-0026, decision 2;
+``xippios.mcp.config``) and builds every endpoint's server (``xippios.mcp.servers``).
+Without a transport flag it stops there: it prints one line per endpoint, its name,
+read or write, its tool count and its packages, and exits 0, so an operator checks a
+config before serving it (gap, row 309). A refusal ends the process like an argparse
+error: the message on stderr, exit status 2, nothing served (ADR-0014, decision 8). The
+transports come with the next step.
 """
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+from xippios.core import ConfigError
+
+from xippios.mcp.config import load_config
+from xippios.mcp.servers import BuildError, build_all
 
 __all__ = ["main"]
 
@@ -23,21 +33,34 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         type=Path,
         metavar="PATH",
-        help="the config file that names the endpoints and groups",
+        help=(
+            "the TOML file that names the endpoints and groups; checked, built and listed, "
+            "one line per endpoint"
+        ),
     )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Parse the command line; until the config loader lands, stop with exit status 2.
+    """Parse the command line, load the config and build every endpoint.
 
-    ``--help`` exits 0 and a missing ``--config`` exits 2, as argparse does; with
-    ``--config`` the host stops with exit status 2 too, since nothing is served yet.
+    ``--help`` exits 0 and a missing ``--config`` exits 2, as argparse does; a config
+    the host refuses exits 2 as well, the refusal on stderr, and a good one prints one
+    line per endpoint and returns, since the transports come with the next step.
 
     Args:
         argv: Arguments without the program name, e.g. ``["--config", "host.toml"]``;
             defaults to ``sys.argv[1:]``.
     """
     parser = _parser()
-    parser.parse_args(argv)
-    parser.error("nothing is served yet: the config loader lands with the next step")
+    args = parser.parse_args(argv)
+    try:
+        config = load_config(args.config)
+        built = build_all(config)
+    except (ConfigError, BuildError) as exc:
+        parser.error(str(exc))
+    for name, endpoint in config.endpoints.items():
+        server = built[name]
+        kind = "write" if server.write else "read"
+        slugs = ", ".join(ref.slug for ref in endpoint.packages)
+        sys.stdout.write(f"{name}: {kind}, {len(server.tools)} tools of {slugs}\n")

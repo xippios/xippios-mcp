@@ -4,8 +4,8 @@
 tools of the family's packages on one server, by endpoint and group (ADR-0026). It is a
 public package that is no source: no tasks, no `api/`, no fixtures and no
 `docs/upstream/` snapshot (ADR-0026, decision 1), and the one repository, package and
-session of the family not named `sdk-*`. The config, the transports, the bearer and the
-image come in the next steps.
+session of the family not named `sdk-*`. The config and the mount are here; the
+transports, the bearer and the image come in the next steps.
 
 ## What this package is
 
@@ -13,8 +13,8 @@ image come in the next steps.
 | --- | --- |
 | Repository | `xippios/xippios-mcp`; PyPI `xippios-mcp`; session `xippios-mcp` |
 | Import path | `xippios.mcp`; `src/xippios/` is a PEP 420 namespace package (conventions §1) |
-| Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required |
-| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, `starlette` and `uvicorn`, which the host imports itself from the next step on, with lower bounds at core's lock (conventions §11) |
+| Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required; without a transport flag it loads the config, builds every endpoint and prints one line per endpoint, a refusal exiting with status 2 |
+| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, which the host imports itself, and `starlette` and `uvicorn`, which it imports from the next step on, with lower bounds at core's lock (conventions §11) |
 | Sources | extras, not dependencies, each with a `>=` floor and no upper bound (ADR-0026, decision 9): `cashctrl` (`xippios-cashctrl>=0.3.0`), `comtrade` (`>=0.2.0`), `eurostat` (`>=0.2.0`), `faostat` (`>=0.1.0`), `usda-esmis` (`>=0.2.0`), `usda-esr` (`>=0.2.0`), `usda-gats` (`>=0.2.0`), `usda-nass` (`>=0.2.0`), `usda-psd` (`>=0.3.0`); `all` is their union. `usda-wasde` joins later (Johannes, 2026-10-29): its 0.1.1 bounds `xippios-usda-esmis` below 0.2, so the ten together do not resolve |
 
 ### What 0.1.0 reads of a package
@@ -28,15 +28,31 @@ package's `SOURCE`), never `server.name` (Johannes, 2026-10-29, G5 question 2 of
 0.1.0 briefing; queue row 306). The package contract of template v0.4.0, a public `build(**options)`
 among it, is the host's 0.2.0 interface (queue row 284).
 
+### The config
+
+`load_config` reads a TOML file of `[endpoints.<name>]` tables (`packages`, `include` or
+`exclude` per package by exact task name, `auth`, `token_env`, `allow_remote`) and checks
+its shape; `build_all` checks what needs the packages and builds the servers. One package
+without a list mounts the package's own server object; a group or a listed endpoint is an
+`MCPServer` named `xippios-<endpoint>` that the host builds with `register_tasks` under
+the package's slug, `MCP_CAPS` cut to the kept tasks, read and write never mixed. Every
+refusal is core's `ConfigError` naming the file, the endpoint and the key; it repeats
+slugs, task names and a package's `server.name`, but never the value of `token_env`,
+`auth` or `allow_remote`, nor the value of an unknown key. A `ValueError` from
+`register_tasks` is re-raised as `servers.BuildError`, a `ValueError`, with the file, the
+endpoint and the package prefixed. `token_env` names a variable ending in `_TOKEN`,
+which the host does not read until the bearer serves.
+
 ### Core internals
 
 The host takes `register_tasks`, `is_write_server` and `quiet_request_logging` from
-`xippios.core.mcp.server`, outside core's public surface (the five `__all__` lists of
-core's `__init__.py` files), and each such import carries a comment naming queue row
-297, where core 0.4.0 decides whether `xippios.core.mcp` exports them. Every `MCPServer`
-the host constructs is followed by `quiet_request_logging()`, and the host calls it
-again before serving: constructing an `MCPServer` sets root logging to `INFO`, and httpx
-logs every request URL at `INFO`, which can carry a key or a tenant host (ADR-0005).
+`xippios.core.mcp.server`, and `is_bulk_task` from `xippios.core._tasks`, outside core's
+public surface (the five `__all__` lists of core's `__init__.py` files); each such import
+carries a comment naming queue row 297, where core 0.4.0 decides whether
+`xippios.core.mcp` exports them. Every `MCPServer` the host constructs is followed by
+`quiet_request_logging()`, and the host calls it again before serving: constructing an
+`MCPServer` sets root logging to `INFO`, and httpx logs every request URL at `INFO`,
+which can carry a key or a tenant host (ADR-0005).
 
 ## Layout
 
@@ -45,12 +61,24 @@ src/xippios/mcp/
   __init__.py      public surface: __version__
   py.typed         PEP 561 marker; consumers' mypy --strict needs it
   _version.py      __version__ from distribution metadata
-  cli.py           the xippios-mcp entry point, main(argv); --config stops with exit
-                   status 2 until the config loader lands
+  cli.py           the xippios-mcp entry point, main(argv): --config loaded, built and
+                   listed, a refusal exiting with status 2
+  config.py        load_config: the TOML file, HostConfig, Endpoint, PackageRef and the
+                   static checks
+  packages.py      known_slugs (the host's extras), import_path, load_package: a
+                   package's tasks, server and caps, and the task-name checks
+  servers.py       build_endpoint and build_all: the package's own server or one the
+                   host builds (Built)
+docs/
+  host.example.toml  the sample config, loaded and built by the tests
 tests/
   conftest.py      enables xippios.core.testing.plugin, which keeps the run offline
   test_package.py  the host's own checks: the namespace level, py.typed, __version__, the
                    core bound, the extras' floors and their union, the entry point, the CLI
+  test_config.py   load_config and every static refusal
+  test_servers.py  the mount through mcp.Client in-process, the pass-through and the
+                   refusals that need a package
+  test_cli.py      the endpoint lines and exit status 2
 .github/workflows/ ci.yml (the required ci check, with the CHANGELOG step), publish.yml
                    (the release train: tag, build, PyPI), gates.yml (the merge gates as
                    jobs, off until GATES_CALLER is 1)
@@ -79,7 +107,7 @@ that apply here.
 
 ```bash
 uv sync --all-extras               # the host with every source package
-uv run pytest                      # offline; no test calls a tool
+uv run pytest                      # offline; no tool reaches an upstream
 
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
@@ -140,7 +168,7 @@ release is ported by hand until the host flavour of the scaffold (queue row 284)
 - Never read or print `.envrc`, `.env`, or any variable ending in `_API_KEY`,
   `_REFRESH_TOKEN` or `_SECRET`.
 - Never read, print or write the variable a config's `token_env` names, the bearer of an
-  endpoint; from the next step on its name ends in `_TOKEN` (queue row 309 (e)).
+  endpoint; its name ends in `_TOKEN`, which `load_config` enforces (queue row 309 (e)).
 - Never write a key or a token into a file or a commit: the secrets stay in the
   environment (conventions §7; ADR-0026, decision 2).
 - Never add a task, an endpoint wrapper or a fixture here, and never rename or re-map a

@@ -104,7 +104,9 @@ convention = "google"
 
 [tool.ruff.lint.isort]
 known-first-party = ["xippios.mcp"]
-known-third-party = ["xippios.core"]
+# `mcp` is the mcp SDK: under the namespace package src/xippios/, ruff would take this
+# package's own directory, src/xippios/mcp, for a first-party `mcp`.
+known-third-party = ["xippios.core", "mcp"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "ANN"]
