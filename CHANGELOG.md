@@ -22,3 +22,13 @@ All notable changes to this project are documented here. The format follows
   names and their result caps. Read and write never share an endpoint, a list names
   exact task names, and `token_env` names a variable ending in `_TOKEN`. A sample config
   is in `docs/host.example.toml`.
+- The transports and the bearer: `--stdio <endpoint>` serves one endpoint on stdio,
+  without auth, and `--http` serves every endpoint at `/<name>/mcp` from one process on
+  `--host` (default `127.0.0.1`) and `--port` (default 8000). An endpoint with
+  `auth = "bearer"` answers a missing or wrong token with `401` and
+  `WWW-Authenticate: Bearer realm="xippios-mcp"`; the token is read once from the
+  variable `token_env` names, and an unset or empty one stops the host with exit status
+  2. An `auth = "none"` write endpoint is served on a loopback host only, unless it sets
+  `allow_remote = true`; a package's own server serves one HTTP endpoint; and an
+  optional `[http]` table names the `Host` and `Origin` values accepted behind a reverse
+  proxy.
