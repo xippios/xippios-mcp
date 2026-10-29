@@ -44,6 +44,10 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> None:
     """Parse the command line, load the config and build every endpoint.
 
+    ``--help`` exits 0 and a missing ``--config`` exits 2, as argparse does; a config
+    the host refuses exits 2 as well, the refusal on stderr, and a good one prints one
+    line per endpoint and returns, since the transports come with the next step.
+
     Args:
         argv: Arguments without the program name, e.g. ``["--config", "host.toml"]``;
             defaults to ``sys.argv[1:]``.

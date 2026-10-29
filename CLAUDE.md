@@ -14,7 +14,7 @@ transports, the bearer and the image come in the next steps.
 | Repository | `xippios/xippios-mcp`; PyPI `xippios-mcp`; session `xippios-mcp` |
 | Import path | `xippios.mcp`; `src/xippios/` is a PEP 420 namespace package (conventions §1) |
 | Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required; without a transport flag it loads the config, builds every endpoint and prints one line per endpoint, a refusal exiting with status 2 |
-| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, `starlette` and `uvicorn`, which the host imports itself, with lower bounds at core's lock (conventions §11) |
+| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, which the host imports itself, and `starlette` and `uvicorn`, which it imports from the next step on, with lower bounds at core's lock (conventions §11) |
 | Sources | extras, not dependencies, each with a `>=` floor and no upper bound (ADR-0026, decision 9): `cashctrl` (`xippios-cashctrl>=0.3.0`), `comtrade` (`>=0.2.0`), `eurostat` (`>=0.2.0`), `faostat` (`>=0.1.0`), `usda-esmis` (`>=0.2.0`), `usda-esr` (`>=0.2.0`), `usda-gats` (`>=0.2.0`), `usda-nass` (`>=0.2.0`), `usda-psd` (`>=0.3.0`); `all` is their union. `usda-wasde` joins later (Johannes, 2026-10-29): its 0.1.1 bounds `xippios-usda-esmis` below 0.2, so the ten together do not resolve |
 
 ### What 0.1.0 reads of a package
@@ -22,8 +22,10 @@ transports, the bearer and the image come in the next steps.
 By ADR-0026, decision 8: `xippios.<pkg>.mcp.server` (`xippios.<pkg>.mcp_write.server`
 for a write server) and its `server.name`, as the packages have them today. For a
 server the host builds itself, a group or an endpoint with a tool list, it reads
-`tasks.__all__`, `tasks_write.__all__` and `MCP_CAPS` (Johannes, 2026-10-29, question
-2; queue row 306). The package contract of template v0.4.0, a public `build(**options)`
+`tasks.__all__`, `tasks_write.__all__` and `MCP_CAPS`, and the slug it passes to
+`register_tasks` is the config's package key (the distribution slug, equal to the
+package's `SOURCE`), never `server.name` (Johannes, 2026-10-29, G5 question 2 of the
+0.1.0 briefing; queue row 306). The package contract of template v0.4.0, a public `build(**options)`
 among it, is the host's 0.2.0 interface (queue row 284).
 
 ### The config
@@ -121,15 +123,17 @@ decision 1), since the template renders sources only:
 
 - Copied byte for byte: `.github/workflows/ci.yml`, `.github/workflows/gates.yml`,
   `.github/workflows/publish.yml`, `.github/PULL_REQUEST_TEMPLATE.md`,
-  `.pre-commit-config.yaml`, `.secrets.baseline`, `.gitignore`, `.python-version` and
-  `.claude/settings.json`.
+  `.pre-commit-config.yaml`, `.secrets.baseline`, `.gitignore`, `.python-version`,
+  `.claude/settings.json` and `src/xippios/mcp/py.typed`. `LICENSE`, on `main` before
+  the scaffold, is the template's file byte for byte as well.
 - Ported by hand: `pyproject.toml`, `src/xippios/mcp/__init__.py` and `_version.py`,
   `tests/conftest.py`, `README.md`, `CHANGELOG.md`, `.claude/commands/release-prep.md`,
   and the family rules of `.claude/family.md` this file keeps.
+- New, the host's own: `src/xippios/mcp/cli.py` and `tests/test_package.py`.
 - Not taken: `live.yml`, `siblings.yml`, `.gitattributes`, `.copier-answers.yml`,
   `.claude/family.md`, the commands but `release-prep`, `scripts/`, `docs/upstream/`,
   the package's modules but `__init__.py` and `_version.py`, and the family, task and
-  live tests. `LICENSE` is the repository's own.
+  live tests.
 
 There is no copier answers file, so `copier update` does not run here: a template
 release is ported by hand until the host flavour of the scaffold (queue row 284) exists.
@@ -160,6 +164,8 @@ release is ported by hand until the host flavour of the scaffold (queue row 284)
 
 - Never read or print `.envrc`, `.env`, or any variable ending in `_API_KEY`,
   `_REFRESH_TOKEN` or `_SECRET`.
+- Never read, print or write the variable a config's `token_env` names, the bearer of an
+  endpoint; its name ends in `_TOKEN`, which `load_config` enforces (queue row 309 (e)).
 - Never write a key or a token into a file or a commit: the secrets stay in the
   environment (conventions §7; ADR-0026, decision 2).
 - Never add a task, an endpoint wrapper or a fixture here, and never rename or re-map a

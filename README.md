@@ -49,7 +49,8 @@ split `usda_nass_get_data` spans up to 20 years, at up to two keyed calls a year
 entry point's default is 5 years), and `usda_gats_get_census_export_series`,
 `usda_gats_get_census_import_series` and `usda_gats_get_census_reexport_series` span up
 to 60 months, at one call a month (the entry point's default is 24 months). An operator
-who wants fewer calls per tool call excludes those tools from the endpoint.
+who wants fewer calls per tool call leaves those tools out with an endpoint's `exclude`
+list (see Configuration).
 
 ## Configuration
 
