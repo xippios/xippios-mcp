@@ -1,0 +1,10 @@
+# xippios-mcp's own, written by hand from the member human paths of C70 (as amended by
+# coordinate-core#122 and #167): no template renders xippios-mcp, so no adoption writes this
+# file. A change to these paths needs the human's review.
+
+/.github/** @jdidaskalu
+/CLAUDE.md @jdidaskalu
+/.claude/** @jdidaskalu
+/rules/** @jdidaskalu
+/pyproject.toml @jdidaskalu
+/.copier-answers.yml @jdidaskalu
