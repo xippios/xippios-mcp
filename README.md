@@ -101,8 +101,8 @@ xippios-mcp --config host.toml
 ```
 
 It loads the file, builds every endpoint and prints one line per endpoint; for
-[`docs/host.example.toml`](docs/host.example.toml), the sample above, with the packages
-at the lower bounds:
+[`docs/host.example.toml`](https://github.com/xippios/xippios-mcp/blob/main/docs/host.example.toml),
+the sample above, with the packages at the lower bounds:
 
 ```text
 agriculture: read, 46 tools of usda-nass, usda-psd, comtrade
@@ -117,7 +117,8 @@ A server the host builds carries none of the packages' own instructions: its
 instructions are one sentence naming its packages and their tool counts. No endpoint
 takes a package's command-line options, such as cashctrl's `--org` lock or the ceilings
 above, since the host runs no package's entry point. The package contract of the next
-template release gives the host what it needs to carry them, in its 0.2.0.
+template release gives the host what it needs to carry them, from the host's first minor
+after that release and `xippios-core` 0.4.0.
 
 ## Serving
 
@@ -183,26 +184,28 @@ expands as written. When a token does not arrive, `claude --debug-file <file>` l
 
 The bearer does not serve claude.ai. claude.ai signs in with OAuth: it starts on a `401`
 that names a `resource_metadata` document, and it needs an OAuth authorization server.
-The host advertises no `resource_metadata` and is no authorization server, so claude.ai
-needs one in front of the host, which 0.1.0 leaves out (ADR-0026, decision 10).
+The host advertises no `resource_metadata` and is no authorization server, so
+claude.ai needs one in front of the host, which 0.1.0 leaves out (sdk-core ADR-0026,
+decision 10).
 
 ### The loopback rule
 
 An endpoint with `auth = "none"` that serves a write server, `cashctrl:write` for
 instance, carries no authentication, so `--http` serves it on a loopback `--host` only,
 `127.0.0.1`, `localhost` or `::1`, as a package's own entry point keeps its write server
-(ADR-0014, decision 9). On another `--host` the host refuses to start unless the
-endpoint sets `allow_remote = true`, and then a gateway in front of it has to
+(sdk-core ADR-0014, decision 9). On another `--host` the host refuses to start unless
+the endpoint sets `allow_remote = true`, and then a gateway in front of it has to
 authenticate. A read endpoint with `auth = "none"`, and every bearer endpoint, is served
 on any host.
 
 A read server that its package holds to loopback, as sdk-google-mail holds its own, is
 not held there by the host's 0.1.0: the packages' loopback-only option is planned for
-`xippios-core`'s next minor, for the host to read from its own 0.2.0 on. None of the
-nine packages 0.1.0 serves holds a read server to loopback, so the case cannot arise
-before a package that does joins, sdk-google-mail once it has a release and an extra.
-Until the host reads the option, keep an `auth = "none"` endpoint of such a package on
-a loopback `--host`, or give it the bearer.
+`xippios-core` 0.4.0, for the host to read from its first minor after that release and
+the next template release. None of the nine packages 0.1.0 serves holds a read server to
+loopback, so the case cannot arise before a package that does joins, sdk-google-mail
+once it has a release and an extra.
+Until the host reads the option, keep an `auth = "none"` endpoint of such a package on a
+loopback `--host`, or give it the bearer.
 
 ### Behind a reverse proxy
 
@@ -272,6 +275,15 @@ prefer the bearer. Beyond loopback the mcp SDK checks no `Host` or `Origin` head
 behind a reverse proxy the config's `[http]` table names the values to accept (see
 Behind a reverse proxy).
 
+## Documents
+
+- sdk-core: [docs/conventions.md](https://github.com/xippios/sdk-core/blob/main/docs/conventions.md) — the conventions of the xippios packages: their layout, names, results, tests and releases, which bind the host as far as sdk-core ADR-0026 says.
+- sdk-core: [docs/adr.md](https://github.com/xippios/sdk-core/blob/main/docs/adr.md) — the index of the family's architecture decisions, which the conventions cite.
+- sdk-core: [docs/definition-of-done.md](https://github.com/xippios/sdk-core/blob/main/docs/definition-of-done.md) — what a change satisfies before its pull request is opened.
+- sdk-core: [docs/review-checklist.md](https://github.com/xippios/sdk-core/blob/main/docs/review-checklist.md) — what the review of a pull request checks, in order.
+- sdk-core: [docs/adr/0026-the-host-xippios-mcp.md](https://github.com/xippios/sdk-core/blob/main/docs/adr/0026-the-host-xippios-mcp.md) — the host's design decisions, and in decision 1 which of the conventions bind a package that is no source.
+- xippios-mcp: [docs/adr.md](https://github.com/xippios/xippios-mcp/blob/main/docs/adr.md) — the index of this package's own decisions, generated from the records in `docs/adr/`.
+
 ## Licence
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](https://github.com/xippios/xippios-mcp/blob/main/LICENSE).
