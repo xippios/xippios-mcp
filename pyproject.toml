@@ -18,8 +18,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 # Core keeps the one-minor bound of conventions §12: the `>=` exception covers the source
-# packages alone (ADR-0026 decision 9; ADR-0021, amendment 2026-10-29, point 4). The host's
-# own imports take lower bounds at core's lock (conventions §11).
+# packages alone (sdk-core ADR-0026 decision 9; sdk-core ADR-0021, amendment 2026-10-29,
+# point 4). The host's own imports take lower bounds at core's lock (conventions §11).
 dependencies = [
   "xippios-core[mcp]~=0.3.0",
   "mcp>=2.3.0",
@@ -29,7 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # One extra per source package with a >= floor at its PyPI version: the host serves every
-# package at its latest (ADR-0026 decision 9). `all` is the union of the others.
+# package at its latest (sdk-core ADR-0026 decision 9). `all` is the union of the others.
 cashctrl = ["xippios-cashctrl>=0.3.0"]
 comtrade = ["xippios-comtrade>=0.2.0"]
 eurostat = ["xippios-eurostat>=0.2.0"]
@@ -119,7 +119,7 @@ quote-style = "double"
 strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 mypy_path = "src"
 namespace_packages = true
 explicit_package_bases = true
