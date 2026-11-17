@@ -1,10 +1,10 @@
-# xippios-mcp's own, written by hand from the member human paths of C70 (as amended by
-# coordinate-core#122 and #167): no template renders xippios-mcp, so no adoption writes this
-# file. A change to these paths needs the human's review.
-
+# The code owners of this repository: GitHub asks the owner named on a path to review every
+# pull request that changes a file under it. The paths below steer how the repository is
+# built, checked and worked on: `.github/`, its workflows among them, `CLAUDE.md` and
+# `.claude/`, the instructions and commands for Claude Code, `pyproject.toml`, its manifest,
+# and `.copier-answers.yml`, the answers a generated repository records.
 /.github/** @jdidaskalu
 /CLAUDE.md @jdidaskalu
 /.claude/** @jdidaskalu
-/rules/** @jdidaskalu
 /pyproject.toml @jdidaskalu
 /.copier-answers.yml @jdidaskalu
