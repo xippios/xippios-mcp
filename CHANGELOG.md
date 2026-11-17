@@ -4,14 +4,6 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/) (pre-1.0: breaking changes bump the minor).
 
-## [Unreleased]
-
-### Changed
-
-- `.github/CODEOWNERS` names the member human paths (`.github/**`, `CLAUDE.md`,
-  `.claude/**`, `rules/**`, `pyproject.toml`, `.copier-answers.yml`) with jdidaskalu as
-  their owner, so a change to them needs the human's review.
-
 ## [0.1.0] - 2026-10-29
 
 The first release of xippios-mcp, the self-hosted MCP host of the xippios SDK family. It
