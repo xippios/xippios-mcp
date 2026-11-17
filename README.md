@@ -117,7 +117,8 @@ A server the host builds carries none of the packages' own instructions: its
 instructions are one sentence naming its packages and their tool counts. No endpoint
 takes a package's command-line options, such as cashctrl's `--org` lock or the ceilings
 above, since the host runs no package's entry point. The package contract of the next
-template release gives the host what it needs to carry them, in its 0.2.0.
+template release gives the host what it needs to carry them, from the host's first minor
+after that release and `xippios-core` 0.4.0.
 
 ## Serving
 
@@ -199,11 +200,11 @@ on any host.
 
 A read server that its package holds to loopback, as sdk-google-mail holds its own, is
 not held there by the host's 0.1.0: the packages' loopback-only option is planned for
-`xippios-core`'s next minor, for the host to read from its own 0.2.0 on. None of the
-nine packages 0.1.0 serves holds a read server to loopback, so the case cannot arise
+`xippios-core`'s next minor, for the host to read from its first minor after it. None of
+the nine packages 0.1.0 serves holds a read server to loopback, so the case cannot arise
 before a package that does joins, sdk-google-mail once it has a release and an extra.
-Until the host reads the option, keep an `auth = "none"` endpoint of such a package on
-a loopback `--host`, or give it the bearer.
+Until the host reads the option, keep an `auth = "none"` endpoint of such a package on a
+loopback `--host`, or give it the bearer.
 
 ### Behind a reverse proxy
 

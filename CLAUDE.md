@@ -31,9 +31,11 @@ By sdk-core ADR-0026, decision 8: `xippios.<pkg>.mcp.server`
 packages have them today. For a server the host builds itself, a group or an endpoint
 with a tool list, it reads `tasks.__all__`, `tasks_write.__all__` and `MCP_CAPS`, and
 the slug it passes to `register_tasks` is the config's package key (the distribution
-slug, equal to the package's `SOURCE`), never `server.name`. The package contract of
-template v0.4.0, a public `build(**options)` among it, is the host's 0.2.0 interface
-(sdk-core ADR-0026, decision 8; https://github.com/xippios/sdk-template/issues/81).
+slug, equal to the package's `SOURCE`), never `server.name` (sdk-core ADR-0026,
+amendment 2026-10-30, part (a)). The package contract of template v0.4.0, a public
+`build(**options)` among it, is the host's interface from its first minor after core
+0.4.0 and template v0.4.0, not from 0.2.0 (sdk-core ADR-0026, amendment 2026-10-30,
+part (e); https://github.com/xippios/sdk-template/issues/81).
 
 ### The config
 

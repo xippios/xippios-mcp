@@ -28,11 +28,13 @@ to the host (sdk-core ADR-0026, decision 1).
    (sdk-core ADR-0026, decision 9). Then `uv lock`, the checks and a changelog fragment
    under `changelog/` that names the new bound, in a pull request of its own before the
    release's. `publish.yml` refuses to tag a pinned release as well.
-2. SemVer check: pre-1.0, a breaking change bumps the minor. A change that breaks the
-   host's public surface, its entry point, its options and its config keys among it, is
-   a breaking change. Read the fragments under `changelog/` and what `## [Unreleased]`
-   holds, where there is one, and confirm that the version matches them; say so in the
-   pull request if it does not.
+2. SemVer check: an added surface bumps the host's minor as SemVer reads it, since the
+   host has no dependents, and pre-1.0 a breaking change bumps it too (sdk-core
+   ADR-0026, amendment 2026-10-30, part (e)); a fix alone is a patch. The host's public
+   surface is its entry point, its options, its config keys and its extras. Read the
+   fragments under `changelog/` and what `## [Unreleased]` holds, where there is one,
+   and confirm that the version matches them; say so in the pull request if it does
+   not.
 3. `pyproject.toml`: set `version`, the version `publish.yml` tags, then `uv lock`.
 4. `CHANGELOG.md`: write `## [<version>] - <today>` in place of `## [Unreleased]`, or
    above the last release where there is none, and assemble its section from the
