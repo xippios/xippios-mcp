@@ -191,6 +191,24 @@ REFUSALS = [
         ":write: names no package",
     ),
     (
+        "a slug with a dot, which would name a module path",
+        _endpoint('packages = ["core._tasks"]\nauth = "none"'),
+        "endpoints.agriculture.packages",
+        "core._tasks: a slug is lower-case letters and digits, its words joined by hyphens",
+    ),
+    (
+        "a slug in capitals",
+        _endpoint('packages = ["Usda-Nass:write"]\nauth = "none"'),
+        "endpoints.agriculture.packages",
+        "Usda-Nass:write: a slug is lower-case letters and digits",
+    ),
+    (
+        "a slug with a doubled hyphen",
+        _endpoint('packages = ["usda--nass"]\nauth = "none"'),
+        "endpoints.agriculture.packages",
+        "usda--nass: a slug is lower-case letters and digits",
+    ),
+    (
         "a group that mixes write and read",
         _endpoint('packages = ["cashctrl:write", "usda-nass"]\nauth = "none"'),
         "endpoints.agriculture.packages",

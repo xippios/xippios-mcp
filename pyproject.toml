@@ -120,7 +120,8 @@ strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 files = ["src", "tests", "scripts"]
-mypy_path = "src"
+# tests/example holds the invented sources the tests serve, xippios.example among them.
+mypy_path = "src,tests/example"
 namespace_packages = true
 explicit_package_bases = true
 warn_unreachable = true
@@ -128,5 +129,8 @@ warn_unreachable = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --import-mode=importlib"
 testpaths = ["tests"]
+# The invented sources the tests serve, xippios.example and xippios.example.api: the host's
+# tests stand on them and wait for no real source.
+pythonpath = ["tests/example"]
 # record_property, in a live test say, warns under xunit2 when a run writes --junitxml.
 junit_family = "xunit1"
