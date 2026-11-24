@@ -21,6 +21,7 @@ import uvicorn
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import TextContent
 from starlette.applications import Starlette
 from xippios.core import ConfigError
 from xippios.core.mcp import LOOPBACK_HOSTS
@@ -139,6 +140,24 @@ async def test_each_endpoint_at_its_path_with_its_auth(
         # The bearer guards the whole mount, a path the endpoint does not serve included.
         assert (await _post(transport, "/agriculture/other")).status_code == 401
         assert (await _post(transport, "/open/other")).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_an_endpoint_shows_its_instructions_and_refuses_the_sixth_period(
+    tmp_path: Path,
+) -> None:
+    """Over HTTP as on stdio: the package's own instructions, and the example's hook applied
+    at its default, a ceiling of 5 periods where its module holds 20."""
+    app = _app(tmp_path, OPEN)
+    async with _served(app) as transport, _session(transport, "/open/mcp") as mcp:
+        assert mcp.instructions == example_tasks.MCP_INSTRUCTIONS
+        result = await mcp.call_tool("example_get_series", {"region_code": "N", "periods": 6})
+    assert result.is_error is True
+    [content] = result.content
+    assert isinstance(content, TextContent)
+    assert content.text.startswith(
+        "error: InvalidRequestError: 6 periods asked; one call fetches at most 5 periods"
+    ), content.text
 
 
 @pytest.mark.anyio

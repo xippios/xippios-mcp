@@ -7,6 +7,7 @@ the middleware runs as it does for a real client. The expected names are read fr
 packages' own ``build()`` here, never typed in where the package gives them.
 """
 
+import argparse
 import sys
 from importlib import import_module
 from pathlib import Path
@@ -14,11 +15,12 @@ from types import ModuleType
 
 import pytest
 import xippios.example.api.mcp
+import xippios.example.api.tasks
 import xippios.example.mcp
 import xippios.example.mcp_write
 from mcp import Client
 from mcp.types import TextContent, Tool
-from xippios.core import ConfigError, ResultCap, tool_name
+from xippios.core import ConfigError, InvalidRequestError, ResultCap, tool_name
 from xippios.core.mcp import ToolSet
 from xippios.core.testing import mcp_call, mcp_call_text
 from xippios.example import tasks as example_tasks
@@ -239,6 +241,156 @@ async def test_the_write_server_with_an_exclude_list(tmp_path: Path) -> None:
     for tool in tools.values():
         assert tool.annotations is not None
         assert tool.annotations.read_only_hint is False
+
+
+# What an endpoint carries of its packages: their instructions and version, and their option
+# hooks applied at the defaults of their entry points (ADR-0001, decision 7).
+
+LISTED = [
+    ('packages = ["example"]\ninclude = { example = ["get_series"] }', xippios.example.mcp),
+    (
+        'packages = ["example:write"]\nexclude = { example = ["delete_thing"] }',
+        xippios.example.mcp_write,
+    ),
+]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(("body", "adapter"), LISTED)
+async def test_one_package_with_a_list_shows_its_instructions_and_version(
+    tmp_path: Path, body: str, adapter: ModuleType
+) -> None:
+    own = adapter.build()
+    built = _build(tmp_path, body)
+    async with Client(built.server) as client:
+        info, instructions = client.server_info, client.instructions
+    assert info is not None
+    assert (info.name, info.version) == ("xippios-agriculture", own.version)
+    assert own.version != __version__  # the package's, not the host's
+    assert instructions == own.instructions
+
+
+@pytest.mark.anyio
+async def test_a_groups_instructions_name_each_packages_own_under_its_slug(
+    tmp_path: Path,
+) -> None:
+    read, api = xippios.example.mcp.build(), xippios.example.api.mcp.build()
+    built = _build(tmp_path, 'packages = ["example-api", "example"]')
+    async with Client(built.server) as client:
+        info, instructions = client.server_info, client.instructions
+    assert info is not None
+    assert info.version == __version__  # a group's server is the host's
+    assert instructions == (
+        "The xippios-mcp endpoint agriculture serves 4 read-only tools of example-api (2) and "
+        "example (2), each named with its package's slug as prefix. Each package's own "
+        "instructions follow under its slug.\n\n"
+        f"## example-api\n\n{api.instructions}\n\n"
+        f"## example\n\n{read.instructions}"
+    )
+
+
+def test_a_package_without_instructions_gets_no_heading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(xippios.example.api.tasks, "MCP_INSTRUCTIONS", None)
+    built = _build(tmp_path, 'packages = ["example", "example-api"]')
+    assert built.server.instructions is not None
+    assert built.server.instructions.endswith(f"## example\n\n{example_tasks.MCP_INSTRUCTIONS}")
+    assert "## example-api" not in built.server.instructions
+    monkeypatch.setattr(example_tasks, "MCP_INSTRUCTIONS", None)
+    alone = _build(tmp_path, 'packages = ["example", "example-api"]').server.instructions
+    assert alone == (
+        "The xippios-mcp endpoint agriculture serves 4 read-only tools of example (2) and "
+        "example-api (2), each named with its package's slug as prefix."
+    )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "body",
+    [
+        'packages = ["example"]',
+        'packages = ["example-api", "example"]',
+        'packages = ["example"]\ninclude = { example = ["get_series"] }',
+    ],
+)
+async def test_an_endpoint_applies_the_hooks_at_their_defaults(tmp_path: Path, body: str) -> None:
+    """The example's hook sets the ceiling of 5 where its module holds 20, as its entry
+    point does without options, so the endpoint refuses the sixth period before the task
+    answers."""
+    assert example_tasks.SERIES.value == example_tasks.SERIES.most == 20
+    assert xippios.example.mcp.build().option_defaults().max_periods == 5
+    built = _build(tmp_path, body)
+    arguments = {"region_code": "N", "periods": 5}
+    answer = await mcp_call(built.server, "example_get_series", arguments)
+    assert [point["period"] for point in answer["data"]] == [1, 2, 3, 4, 5]
+    async with Client(built.server) as client:
+        result = await client.call_tool("example_get_series", {**arguments, "periods": 6})
+    assert result.is_error is True
+    [content] = result.content
+    assert isinstance(content, TextContent)
+    assert content.text == (
+        "error: InvalidRequestError: 6 periods asked; one call fetches at most 5 periods, the "
+        "ceiling set for this process (the MCP server starts with 5 by default; --max-periods "
+        "raises it, up to 20). Nothing was sent. Ask for fewer periods."
+    )
+
+
+def test_the_ceiling_holds_for_the_whole_process(tmp_path: Path) -> None:
+    """As the entry point's does: the hook sets the module's ceiling, so a Python call in the
+    host's process is held to it too, and so is every endpoint that serves the package."""
+    assert len(example_tasks.get_series("N", periods=6).data) == 6
+    _build(tmp_path, 'packages = ["example-api"]')  # a package without hooks changes nothing
+    assert example_tasks.SERIES.value == 20
+    _build(tmp_path, 'packages = ["example"]')
+    assert example_tasks.SERIES.value == 5
+    with pytest.raises(InvalidRequestError, match="6 periods asked"):
+        example_tasks.get_series("N", periods=6)
+
+
+def add_region(parser: argparse.ArgumentParser) -> None:
+    """An option hook whose option has no default, which an empty command line leaves unset."""
+    parser.add_argument("--region", required=True)
+
+
+def test_an_option_without_a_default_is_refused_with_the_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(example_tasks, "mcp_add_options", add_region)
+    with pytest.raises(BuildError) as refused:
+        _build(tmp_path, 'packages = ["example-api", "example"]')
+    assert str(refused.value).startswith(
+        f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: ValueError: example: "
+        "add_options needs a default for each of its options"
+    ), str(refused.value)
+    assert "--region" in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConfigError("EXAMPLE_REGION is not set; set it to a region's code"),
+        ValueError("EXAMPLE_REGION is not set; set it to a region's code"),
+    ],
+)
+def test_a_hook_that_refuses_its_defaults_is_refused_with_the_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    """Where the entry point would exit with status 2, the host refuses the endpoint, never
+    with a traceback that ends the packages it serves beside it."""
+
+    def refuse(namespace: argparse.Namespace) -> None:
+        assert namespace.max_periods == 5  # the parsed options alone, at their defaults
+        raise error
+
+    monkeypatch.setattr(example_tasks, "mcp_apply_options", refuse)
+    with pytest.raises(BuildError) as refused:
+        _build(tmp_path, 'packages = ["example"]\ninclude = { example = ["list_regions"] }')
+    assert str(refused.value) == (
+        f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: {type(error).__name__}: "
+        "EXAMPLE_REGION is not set; set it to a region's code"
+    )
+    assert refused.value.__cause__ is error
 
 
 # The pass-through (ADR-0026, decision 6): an answer reaches the client as the package's
