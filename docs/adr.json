@@ -1,3 +1,18 @@
 {
-  "records": []
+  "records": [
+    {
+      "id": "ADR-0001",
+      "number": 1,
+      "title": "The endpoint from a package's tool set",
+      "path": "docs/adr/0001-the-endpoint-from-a-package-s-tool-set.md",
+      "status": "Accepted",
+      "date": "2026-11-24",
+      "decided_by": "https://github.com/xippios/sdk-core/issues/485",
+      "amended": [],
+      "amends": [],
+      "supersedes": [],
+      "other": [],
+      "superseded_by": null
+    }
+  ]
 }
