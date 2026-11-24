@@ -1,23 +1,26 @@
 """The mount: one MCP server per endpoint, built from its packages' tool sets.
 
 Every endpoint gets a server of its own, built from the tool sets its packages' ``build()``
-returns (sdk-core ADR-0063, decision 4; ADR-0001 of this package). An endpoint that names
-one package and no tool list serves ``build_server(tool_set)``, the server the package's
-own entry point serves: named ``xippios-<source>``, with the package's instructions,
-version and caps. A group, several packages, or an endpoint with an include or exclude
-list is one ``MCPServer`` named ``xippios-<endpoint>``, on which ``register_tasks``
-registers each package's tool set, narrowed to the list first, so the tools keep their
-names (``usda_nass_get_data``) and their package's caps. Whether the server writes and
-whether it is held to loopback come from the tool sets' ``read_only`` and
-``loopback_only`` (sdk-core ADR-0063, decision 5). The host wraps no tool and reads no
-answer: an error answer reaches the client as the package's tool returned it (ADR-0026,
-decision 6).
+returns (sdk-core ADR-0063, decision 4; ADR-0001 of this package). An endpoint of one
+package serves ``build_server(tool_set)``, the server the package's own entry point serves,
+with the package's instructions, version and caps: named ``xippios-<source>``, or
+``xippios-<endpoint>`` with an include or exclude list, to which its tool set is narrowed.
+A group, several packages, is one ``MCPServer`` named ``xippios-<endpoint>``, on which
+``register_tasks`` registers each package's tool set, narrowed to its list, so the tools
+keep their names (``usda_nass_get_data``) and their package's caps; its instructions open
+with the host's sentence and name each package's own under its slug. Before a server is
+built, each tool set's option hook is applied at the defaults of the package's entry point,
+as that entry point applies it when it runs without options (ADR-0001, decision 7).
+Whether the server writes and whether it is held to loopback come from the tool sets'
+``read_only`` and ``loopback_only`` (sdk-core ADR-0063, decision 5). The host wraps no tool
+and reads no answer: an error answer reaches the client as the package's tool returned it
+(ADR-0026, decision 6).
 """
 
 from dataclasses import dataclass
 
 from mcp.server.mcpserver import MCPServer
-from xippios.core import ConfigError, tool_name
+from xippios.core import ConfigError, XippiosError, tool_name
 from xippios.core.mcp import ToolSet, build_server, quiet_request_logging, register_tasks
 
 from xippios.mcp._version import __version__
@@ -28,14 +31,17 @@ __all__ = ["BuildError", "Built", "build_all", "build_endpoint"]
 
 
 class BuildError(ValueError):
-    """A package's import, its ``build()`` or the narrowed copy raised during the build.
+    """A package's import, its ``build()``, the narrowed copy or its option hook raised.
 
-    Every ``ValueError`` or ``TypeError`` raised there: core's refusal of a declaration, a
-    write task without ``confirm`` or ``MCP_CAPS`` no mapping say, and a package's own
-    error alike, since core raises its refusals as these plain classes and the host cannot
-    tell the two apart. Re-raised with the file, the endpoint, the package and the error's
-    class prefixed, so the command line exits 2 with a message that names where it stands
-    and what was raised; an error the build does not raise propagates as it is.
+    Every ``ValueError`` or ``TypeError`` raised at the import, by ``build()`` or by the
+    narrowed copy: core's refusal of a declaration, a write task without ``confirm`` or
+    ``MCP_CAPS`` no mapping say, and a package's own error alike, since core raises its
+    refusals as these plain classes and the host cannot tell the two apart. And the
+    ``ValueError`` of ``option_defaults()`` for an option without a default, or the
+    ``XippiosError`` or ``ValueError`` of the package's option hook, applied at those
+    defaults. Re-raised with the file, the endpoint, the package and the error's class
+    prefixed, so the command line exits 2 with a message that names where it stands and
+    what was raised; an error the build does not raise propagates as it is.
     """
 
 
@@ -83,14 +89,20 @@ def build_endpoint(endpoint: Endpoint) -> Built:
             or a name of an include or exclude list is no task of its package. The
             message names the file, the endpoint and the key.
         BuildError: A package's import, its ``build()`` or the narrowed copy raised a
-            ``ValueError`` or a ``TypeError``, core's refusal of a declaration among them;
-            the message names the file, the endpoint, the package and the error's class.
+            ``ValueError`` or a ``TypeError``, core's refusal of a declaration among them,
+            or its option hook refused the defaults; the message names the file, the
+            endpoint, the package and the error's class.
     """
     packages = [_load(endpoint, ref) for ref in endpoint.packages]
-    if len(packages) == 1 and not endpoint.include and not endpoint.exclude:
-        tool_set = packages[0].tool_set
-        return _built(build_server(tool_set), [tool_set])
-    tool_sets = [_narrowed(endpoint, package) for package in packages]
+    listed = bool(endpoint.include or endpoint.exclude)
+    tool_sets = [
+        _narrowed(endpoint, package) if listed else package.tool_set for package in packages
+    ]
+    for package, tool_set in zip(packages, tool_sets, strict=True):
+        _apply_options(endpoint, package.ref, tool_set)
+    if len(tool_sets) == 1:
+        name = f"xippios-{endpoint.name}" if listed else None
+        return _built(build_server(tool_sets[0], name=name), tool_sets)
     server = MCPServer(
         f"xippios-{endpoint.name}",
         version=__version__,
@@ -143,8 +155,35 @@ def _refused(endpoint: Endpoint, ref: PackageRef, exc: Exception) -> BuildError:
     )
 
 
+def _apply_options(endpoint: Endpoint, ref: PackageRef, tool_set: ToolSet) -> None:
+    """Apply the tool set's option hook as its entry point does when it runs without options.
+
+    ``option_defaults()`` gives the options that the entry point parses from an empty
+    command line, core's and the package's each at its default, and ``apply_options``
+    takes them alone (sdk-core ADR-0063, decision 4). A hook sets what it sets for the
+    whole process, as the entry point's does, a ceiling in force say; a tool set without
+    the hook is served as it is.
+
+    Raises:
+        BuildError: ``option_defaults()`` met an option without a default, or the hook
+            raised a ``XippiosError`` or a ``ValueError``, where the entry point would exit
+            with status 2.
+    """
+    if tool_set.apply_options is None:
+        return
+    try:
+        tool_set.apply_options(tool_set.option_defaults())
+    except (XippiosError, ValueError) as exc:
+        raise _refused(endpoint, ref, exc) from exc
+
+
 def _instructions(endpoint: Endpoint, tool_sets: list[ToolSet]) -> str:
-    """One sentence on what the endpoint serves, from its packages and their tool counts."""
+    """A group's instructions: the host's sentence, then each package's own under its slug.
+
+    The sentence names what the endpoint serves, its packages with their tool counts. Each
+    package's own instructions follow under a heading of its slug, ``## usda-nass``, in the
+    config's order; a package without instructions gets no heading.
+    """
     parts = [f"{tool_set.source} ({len(tool_set.tasks)})" for tool_set in tool_sets]
     served = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
     total = sum(len(tool_set.tasks) for tool_set in tool_sets)
@@ -155,4 +194,9 @@ def _instructions(endpoint: Endpoint, tool_sets: list[ToolSet]) -> str:
     )
     if endpoint.write:
         sentence += "; every tool takes confirm and returns a preview unless confirm is true"
-    return sentence + "."
+    own = [f"## {ts.source}\n\n{ts.instructions}" for ts in tool_sets if ts.instructions]
+    if not own:
+        return f"{sentence}."
+    return "\n\n".join(
+        [f"{sentence}. Each package's own instructions follow under its slug.", *own]
+    )

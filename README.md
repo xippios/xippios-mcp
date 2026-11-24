@@ -34,14 +34,17 @@ Python-only, each with its own result cap.
 ### The ceilings of usda-nass and usda-gats
 
 `--split-years` of `xippios-usda-nass-mcp` and `--series-months` of
-`xippios-usda-gats-mcp` are options of those packages' own entry points, which the host
-does not run. The host therefore serves the ceilings the packages keep in Python: a
-split `usda_nass_get_data` spans up to 20 years, at up to two keyed calls a year (the
-entry point's default is 5 years), and `usda_gats_get_census_export_series`,
+`xippios-usda-gats-mcp` are options of those packages' own entry points, and each
+package's tool set carries the hooks that apply them. The host applies every package's
+hooks with the defaults that its entry point parses from an empty command line, so it
+serves the ceilings that the entry points serve without options: a split
+`usda_nass_get_data` spans up to 5 years, at up to two keyed calls a year, where the
+package's Python API spans 20, and `usda_gats_get_census_export_series`,
 `usda_gats_get_census_import_series` and `usda_gats_get_census_reexport_series` span up
-to 60 months, at one call a month (the entry point's default is 24 months). An operator
-who wants fewer calls per tool call leaves those tools out with an endpoint's `exclude`
-list (see Configuration).
+to 24 months, at one call a month, where it spans 60; a longer range is refused. As
+with the entry point, the ceiling holds for the whole process, every endpoint that
+serves the package included. The config sets no option of a package: a higher ceiling
+is the package's own entry point's, run with its option.
 
 ## Configuration
 
@@ -61,15 +64,19 @@ packages = ["cashctrl:write"]
 auth = "none"
 ```
 
-- An endpoint that names one package and no list serves the server of that package's
-  tool set, `xippios.<package>.mcp.build()`, or `mcp_write.build()` for `<slug>:write`,
-  as the package's own entry point serves it: named `xippios-<slug>`, with its
-  instructions, version and result caps. Each endpoint has a server of its own, so one
-  package may serve several endpoints.
-- A group, several packages, or an endpoint with an `include` or `exclude` list is a
-  server the host builds, named `xippios-<endpoint>`: each package's tools under their
-  own names (`usda_nass_get_data`), with the package's result caps for the tools it
-  keeps.
+- An endpoint that names one package serves the server of that package's tool set,
+  `xippios.<package>.mcp.build()`, or `mcp_write.build()` for `<slug>:write`, as the
+  package's own entry point serves it, with its instructions, version and result caps:
+  named `xippios-<slug>`, or `xippios-<endpoint>` with an `include` or `exclude` list,
+  which narrows its tools. Each endpoint has a server of its own, so one package may
+  serve several endpoints.
+- A group, several packages, is a server the host builds, named `xippios-<endpoint>`:
+  each package's tools under their own names (`usda_nass_get_data`), with the package's
+  result caps for the tools it keeps. Its instructions open with one sentence naming its
+  packages and their tool counts, then give each package's own instructions under a
+  heading of its slug, `## usda-nass`.
+- Every endpoint applies its packages' option hooks with the defaults of their entry
+  points, as those run without options (see The ceilings of usda-nass and usda-gats).
 - Read and write never mix: an endpoint's packages are all `<slug>:write` or none, and
   the host refuses a group that mixes them.
 - `include` and `exclude` are keyed by package slug and name exact task names, a task
@@ -105,14 +112,15 @@ accounting-write: write, <n> tools of cashctrl
 ```
 
 A key, package or task the host refuses stops it with exit status 2 and a message that
-names the file, the endpoint and the key. The list runs no loopback check of Serving,
-which needs `--http` and its `--host`.
+names the file, the endpoint and the key. A package whose tool set core refuses, or
+whose option hook refuses its defaults, stops it the same way, the message naming the
+file, the endpoint and the package: the list builds every endpoint as it is served, the
+hooks applied. The list runs no loopback check of Serving, which needs `--http` and its
+`--host`.
 
-An endpoint of one package carries that package's own instructions and version. A
-server the host builds for a group or a list carries none of the packages' own
-instructions: its instructions are one sentence naming its packages and their tool
-counts. No endpoint takes a package's command-line options, such as cashctrl's `--org`
-lock or the ceilings above, since the host runs no package's entry point.
+The host binds no tenant: a multi-tenant package, cashctrl say, is served for every
+tenant its environment declares, and each of its tools takes the tenant as an argument,
+where its own entry point's `--org` binds one.
 
 ## Serving
 
