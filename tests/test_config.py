@@ -437,6 +437,18 @@ def test_allowed_hosts_without_origins(tmp_path: Path) -> None:
     assert config.http == HttpConfig(allowed_hosts=("mcp.example.com",))
 
 
+def test_the_sample_loads() -> None:
+    """The README's sample, whose packages are real sources: its build needs them installed."""
+    config = load_config(SAMPLE)
+    assert list(config.endpoints) == ["agriculture", "accounting-write"]
+    agriculture, write = config.endpoints["agriculture"], config.endpoints["accounting-write"]
+    assert [ref.slug for ref in agriculture.packages] == ["usda-nass", "usda-psd", "comtrade"]
+    assert dict(agriculture.exclude) == {"usda-nass": frozenset({"get_counts"})}
+    assert (agriculture.auth, agriculture.allow_remote) == ("bearer", False)
+    assert write.packages == (PackageRef("cashctrl", write=True),)
+    assert write.auth == "none"
+
+
 def test_the_samples_http_example_loads(tmp_path: Path) -> None:
     """The commented ``[http]`` table of the sample config, uncommented, is a good one."""
     lines = SAMPLE.read_text(encoding="utf-8").splitlines()
