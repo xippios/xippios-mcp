@@ -8,7 +8,12 @@
       "status": "Accepted",
       "date": "2026-11-24",
       "decided_by": "https://github.com/xippios/sdk-core/issues/485",
-      "amended": [],
+      "amended": [
+        {
+          "date": "2026-11-25",
+          "by": "https://github.com/xippios/xippios-mcp/issues/27"
+        }
+      ],
       "amends": [],
       "supersedes": [],
       "other": [],

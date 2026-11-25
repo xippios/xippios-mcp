@@ -7,6 +7,7 @@ below is a test value set with ``monkeypatch.setenv``; it never leaves the test.
 packages are the invented sources under ``tests/example``.
 """
 
+import argparse
 import logging
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ import xippios.example.mcp
 import xippios.example.mcp_write
 from mcp.server.mcpserver import MCPServer
 from starlette.applications import Starlette
+from xippios.core import ConfigError
 from xippios.example import tasks as example_tasks
 from xippios.example import tasks_write as example_tasks_write
 
@@ -127,6 +129,36 @@ def test_a_declaration_of_the_wrong_type_exits_2(
         f"error: {path}: endpoints.agriculture: example: TypeError: "
         "xippios.example.tasks.MCP_CAPS is a mapping, got list"
     ) in err
+
+
+def test_the_list_applies_the_hooks_at_their_defaults(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The list builds every endpoint as it is served, the packages' option hooks applied."""
+    path = _write(tmp_path, '[endpoints.agriculture]\npackages = ["example"]\nauth = "none"\n')
+    assert example_tasks.SERIES.value == 20
+    main(["--config", str(path)])
+    assert capsys.readouterr().out == f"agriculture: read, {READ} tools of example\n"
+    assert example_tasks.SERIES.value == 5
+
+
+def test_a_refusal_of_a_hook_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(namespace: argparse.Namespace) -> None:
+        raise ConfigError("EXAMPLE_REGION is not set; set it to a region's code")
+
+    monkeypatch.setattr(example_tasks, "mcp_apply_options", refuse)
+    path = _write(tmp_path, '[endpoints.agriculture]\npackages = ["example"]\nauth = "none"\n')
+    with pytest.raises(SystemExit) as exited:
+        main(["--config", str(path)])
+    assert exited.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert (
+        f"xippios-mcp: error: {path}: endpoints.agriculture: example: ConfigError: "
+        "EXAMPLE_REGION is not set"
+    ) in captured.err
 
 
 def test_an_unrelated_value_error_is_no_refusal(
