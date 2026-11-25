@@ -402,3 +402,35 @@ def test_a_refusal_of_the_tool_set_names_the_file_endpoint_and_package(
         f"{tmp_path / 'host.toml'}: endpoints.accounting-write: example:write: "
         "example_create_thing: no parameter confirm"
     )
+
+
+@pytest.mark.parametrize(
+    ("declaration", "value", "message"),
+    [
+        pytest.param(
+            "MCP_CAPS", ["list_regions"], "xippios.example.tasks.MCP_CAPS is a mapping", id="caps"
+        ),
+        pytest.param(
+            "MCP_INSTRUCTIONS", 3, "xippios.example.tasks.MCP_INSTRUCTIONS is text", id="text"
+        ),
+        pytest.param(
+            "MCP_LOOPBACK_ONLY",
+            "yes",
+            "xippios.example.tasks.MCP_LOOPBACK_ONLY is True or",
+            id="hold",
+        ),
+    ],
+)
+def test_a_declaration_of_the_wrong_type_is_a_build_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str, value: object, message: str
+) -> None:
+    """Core refuses it with a ``TypeError`` while the tool set is built (sdk-core ADR-0063,
+    decision 7), which the host names with the file, the endpoint and the package."""
+    monkeypatch.setattr(example_tasks, declaration, value, raising=False)
+    for body in ('packages = ["example"]', 'packages = ["example-api", "example"]'):
+        with pytest.raises(BuildError) as refused:
+            _build(tmp_path, body)
+        assert isinstance(refused.value.__cause__, TypeError)
+        assert str(refused.value).startswith(
+            f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: {message}"
+        )

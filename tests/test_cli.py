@@ -17,6 +17,7 @@ import xippios.example.mcp
 import xippios.example.mcp_write
 from mcp.server.mcpserver import MCPServer
 from starlette.applications import Starlette
+from xippios.example import tasks as example_tasks
 from xippios.example import tasks_write as example_tasks_write
 
 import xippios.mcp.cli
@@ -109,6 +110,22 @@ def test_a_refusal_of_the_tool_set_exits_2(
     assert (
         f"error: {path}: endpoints.accounting-write: example:write: example_create_thing: "
         "no parameter confirm"
+    ) in err
+
+
+def test_a_declaration_of_the_wrong_type_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Core's ``TypeError`` for it ends as a refusal, never as a traceback."""
+    monkeypatch.setattr(example_tasks, "MCP_CAPS", ["list_regions"])
+    path = _write(tmp_path, '[endpoints.agriculture]\npackages = ["example"]\nauth = "none"\n')
+    with pytest.raises(SystemExit) as exited:
+        main(["--config", str(path)])
+    assert exited.value.code == 2
+    err = capsys.readouterr().err
+    assert (
+        f"error: {path}: endpoints.agriculture: example: xippios.example.tasks.MCP_CAPS is a "
+        "mapping, got list"
     ) in err
 
 
