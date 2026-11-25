@@ -7,9 +7,10 @@ invented sources of ``tests/example`` alone skips them all. A source loads by it
 and every endpoint the host builds of it lists its tools under the names and with the input
 schemas of the source's own ``server``, both reached through ``mcp.Client`` in-process, as a
 client reaches them. Each call is one that the source answers or refuses before any request:
-it runs inside a recorder that counts the requests handed to httpx and the sockets connected
-or names resolved, and the test asserts that it counted none. ``CONFIG`` is the config of the
-report of 2026-11-25 under ``docs/reports/``, which records a run of this module.
+it runs inside a recorder that counts the requests reaching httpcore's connection pools and the
+audit events of CPython's ``socket`` module, and the test asserts that it counted none.
+``CONFIG`` is the config of the report of 2026-11-25 under ``docs/reports/``, which records a
+run of this module.
 """
 
 import json
@@ -160,13 +161,13 @@ def _hooked() -> None:
 
 @dataclass
 class Sent:
-    """What a recorded block sent.
+    """What a recorded block handed over, by the two means the recorder counts.
 
     Attributes:
-        requests: The requests that an httpx client handed to httpcore, the way every
-            client of core sends; respx answers each, so none leaves.
-        sockets: The socket audit events, a connection opened or a name resolved by any
-            way at all, e.g. ``["socket.getaddrinfo"]``.
+        requests: The requests that reached httpcore's connection pools, where httpx's
+            default transports hand a request over; respx answers each without sending it.
+        sockets: The audit events that CPython's ``socket`` module raised for a connection,
+            a lookup or a datagram, e.g. ``["socket.getaddrinfo"]``.
     """
 
     requests: int = 0
@@ -175,7 +176,7 @@ class Sent:
 
 @contextmanager
 def _recorded() -> Iterator[Sent]:
-    """Record what the block sends: by respx for httpx, by Python's audit events for sockets."""
+    """Count what the block hands over: at httpcore's pools by respx, and the socket events."""
     _hooked()
     sent = Sent()
     with respx.mock(assert_all_mocked=False) as router:
@@ -269,17 +270,17 @@ async def test_the_list_mode_prints_each_endpoint_with_its_tool_count(
     ]
 
 
-# One call for each source that sends nothing: an answer from a table the package carries,
+# One call for each source, with nothing counted: an answer from a table the package carries,
 # or a refusal before any request, with none of the source's variables set.
 
 
-async def _sends_nothing(
+async def _recorded_call(
     built: Built,
     tool: str,
     arguments: dict[str, Any],
     record_property: Callable[[str, object], None],
 ) -> str:
-    """Call ``tool`` inside the recorder, assert that it sent nothing, and return its text.
+    """Call ``tool`` inside the recorder, assert that it counted nothing, and return its text.
 
     The text is kept as the test's property ``answer``, which ``--junitxml`` writes, so a
     run records what each call answered.
@@ -301,7 +302,7 @@ async def test_faostat_answers_an_area_list_from_its_packaged_table(
     _without_variables("faostat", monkeypatch)
     built = _build(tmp_path, "faostat")
     arguments = {"domain_code": "QCL", "search": "germany"}
-    text = await _sends_nothing(built, "faostat_list_areas", arguments, record_property)
+    text = await _recorded_call(built, "faostat_list_areas", arguments, record_property)
     assert not text.startswith("error:"), text
     answer = json.loads(text)
     assert [(row["code"], row["label"]) for row in answer["data"]] == [("79", "Germany")]
@@ -317,7 +318,7 @@ async def test_usda_esr_answers_its_regions_from_its_packaged_list(
 ) -> None:
     _without_variables("usda-esr", monkeypatch)
     built = _build(tmp_path, "usda-esr")
-    text = await _sends_nothing(built, "usda_esr_list_regions", {}, record_property)
+    text = await _recorded_call(built, "usda_esr_list_regions", {}, record_property)
     assert not text.startswith("error:"), text
     answer = json.loads(text)
     assert answer["data"]
@@ -336,6 +337,6 @@ async def test_cashctrl_refuses_an_undeclared_organisation_before_any_request(
     _without_variables("cashctrl", monkeypatch)
     built = _build(tmp_path, "cashctrl")
     arguments = {"org": "demo"}
-    text = await _sends_nothing(built, "cashctrl_list_currencies", arguments, record_property)
+    text = await _recorded_call(built, "cashctrl_list_currencies", arguments, record_property)
     assert text.startswith("error: InvalidRequestError: unknown tenant 'demo'; no tenant is "), text
     assert text.endswith("Nothing was sent."), text
