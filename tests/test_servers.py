@@ -329,11 +329,9 @@ async def test_an_endpoint_applies_the_hooks_at_their_defaults(tmp_path: Path, b
     assert result.is_error is True
     [content] = result.content
     assert isinstance(content, TextContent)
-    assert content.text == (
-        "error: InvalidRequestError: 6 periods asked; one call fetches at most 5 periods, the "
-        "ceiling set for this process (the MCP server starts with 5 by default; --max-periods "
-        "raises it, up to 20). Nothing was sent. Ask for fewer periods."
-    )
+    assert content.text.startswith(
+        "error: InvalidRequestError: 6 periods asked; one call fetches at most 5 periods"
+    ), content.text  # the opening alone: the rest of the sentence is core's to word
 
 
 def test_the_ceiling_holds_for_the_whole_process(tmp_path: Path) -> None:
