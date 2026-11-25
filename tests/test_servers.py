@@ -253,7 +253,12 @@ async def test_an_undeclared_argument_is_refused_before_the_tool_runs(
     tmp_path: Path, body: str
 ) -> None:
     built = _build(tmp_path, body)
-    text = await mcp_call_text(built.server, "example_get_series", {"region": "N"})
+    async with Client(built.server) as client:
+        result = await client.call_tool("example_get_series", {"region": "N"})
+    assert result.is_error is True
+    [content] = result.content
+    assert isinstance(content, TextContent)
+    text = content.text
     assert text.startswith("error: InvalidRequestError: region: Not an argument of this tool"), text
     assert text.endswith("Nothing was sent.")
 
