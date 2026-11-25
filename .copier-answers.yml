@@ -1,0 +1,12 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.5.0
+_src_path: https://github.com/xippios/sdk-template.git
+api_key_env: ''
+core_git_ref: ''
+core_version: 0.5.0
+import_path: mcp
+repository_name: xippios-mcp
+shape: general
+source_dependencies: '[]'
+source_name: The self-hosted MCP host for the xippios SDKs
+source_slug: mcp
