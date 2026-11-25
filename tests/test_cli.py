@@ -108,8 +108,8 @@ def test_a_refusal_of_the_tool_set_exits_2(
     assert exited.value.code == 2
     err = capsys.readouterr().err
     assert (
-        f"error: {path}: endpoints.accounting-write: example:write: example_create_thing: "
-        "no parameter confirm"
+        f"error: {path}: endpoints.accounting-write: example:write: ValueError: "
+        "example_create_thing: no parameter confirm"
     ) in err
 
 
@@ -124,8 +124,8 @@ def test_a_declaration_of_the_wrong_type_exits_2(
     assert exited.value.code == 2
     err = capsys.readouterr().err
     assert (
-        f"error: {path}: endpoints.agriculture: example: xippios.example.tasks.MCP_CAPS is a "
-        "mapping, got list"
+        f"error: {path}: endpoints.agriculture: example: TypeError: "
+        "xippios.example.tasks.MCP_CAPS is a mapping, got list"
     ) in err
 
 

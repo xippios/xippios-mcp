@@ -399,7 +399,7 @@ def test_a_refusal_of_the_tool_set_names_the_file_endpoint_and_package(
         _build(tmp_path, 'packages = ["example:write"]', name="accounting-write")
     assert isinstance(refused.value, ValueError)
     assert str(refused.value).startswith(
-        f"{tmp_path / 'host.toml'}: endpoints.accounting-write: example:write: "
+        f"{tmp_path / 'host.toml'}: endpoints.accounting-write: example:write: ValueError: "
         "example_create_thing: no parameter confirm"
     )
 
@@ -432,5 +432,25 @@ def test_a_declaration_of_the_wrong_type_is_a_build_refusal(
             _build(tmp_path, body)
         assert isinstance(refused.value.__cause__, TypeError)
         assert str(refused.value).startswith(
-            f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: {message}"
+            f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: TypeError: {message}"
         )
+
+
+@pytest.mark.parametrize("error", [ValueError, TypeError])
+def test_a_packages_own_error_names_its_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    """Core raises its refusals as plain ``ValueError`` and ``TypeError``, so the host cannot
+    tell them from a package's own: each ends as a refusal that names its class."""
+
+    def build() -> ToolSet:
+        raise error("unsupported operand type(s) for +: 'int' and 'str'")
+
+    monkeypatch.setattr(xippios.example.mcp, "build", build)
+    with pytest.raises(BuildError) as refused:
+        _build(tmp_path, 'packages = ["example"]')
+    assert isinstance(refused.value.__cause__, error)
+    assert str(refused.value) == (
+        f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: {error.__name__}: "
+        "unsupported operand type(s) for +: 'int' and 'str'"
+    )

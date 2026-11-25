@@ -296,6 +296,41 @@ def test_the_lists_are_read_from_core() -> None:
             ["1: xippios.core.mcp._held"],
             id="a private name",
         ),
+        pytest.param(
+            "from xippios.core import mcp\nmcp.server.register_tasks\n",
+            ["2: xippios.core.mcp.server"],
+            id="a chain on a pinned module imported by name",
+        ),
+        pytest.param(
+            "import xippios.core.mcp as m\nm.cli.LOOPBACK_HOSTS\n",
+            ["2: xippios.core.mcp.cli"],
+            id="a chain on a module's alias",
+        ),
+        pytest.param(
+            "from xippios import core\ncore._tasks.is_bulk_task\n",
+            ["2: xippios.core._tasks"],
+            id="a chain on core imported from the namespace",
+        ),
+        pytest.param(
+            "import xippios.core as c\nc.mcp.server\n",
+            ["2: xippios.core.mcp.server"],
+            id="a chain on core's alias",
+        ),
+        pytest.param(
+            "from xippios.core import mcp\nmcp.ToolSet\n",
+            [],
+            id="a pinned name on a pinned module imported by name",
+        ),
+        pytest.param(
+            "import xippios.core.mcp as m\nm.ToolSet.from_tasks\n",
+            [],
+            id="a pinned name on a module's alias",
+        ),
+        pytest.param(
+            "from xippios.core.mcp import ToolSet\nToolSet.from_tasks\n",
+            [],
+            id="an attribute of a pinned name",
+        ),
     ],
 )
 def test_an_import_outside_the_lists_is_found(source: str, found: list[str]) -> None:
