@@ -9,4 +9,50 @@ its own, each with what it holds, and the change that adds one updates it.
 The import path is `xippios.mcp` (sdk-core ADR-0006); `src/xippios/` is a
 namespace package.
 
-<!-- What this package adds to those files, in a code block laid out as the family's tree is: a line per file or directory with what it holds, the package's own modules, scripts and tests among them. -->
+```
+src/xippios/mcp/
+  cli.py           the xippios-mcp entry point, main(argv): --config loaded and built,
+                   then --stdio ENDPOINT, --http or the endpoint list; a refusal exits
+                   with status 2
+  config.py        load_config: the TOML file, HostConfig, Endpoint, PackageRef,
+                   HttpConfig and the static checks
+  auth.py          the bearer: token_digest (the token variable, read once) and Bearer,
+                   the ASGI wrapper that answers 401
+  app.py           build_app: the loopback check, the transport security, one Mount per
+                   endpoint and the lifespan; serve_http (uvicorn)
+  packages.py      import_path, load_package: a package's tool set by its build(), and
+                   Package.narrowed, the copy under a tool list
+  servers.py       build_endpoint and build_all: a server of its own for each endpoint,
+                   one package's or a group's (Built)
+tests/
+  example/         the invented sources the tests serve, xippios.example and the nested
+                   xippios.example.api, on pytest's pythonpath and mypy's path; they ship
+                   in no distribution
+  test_package.py  the host's own checks: the namespace level, py.typed, __version__, the
+                   core bound, the extras' floors and their union, the entry point, the
+                   CLI, core imported by its pinned lists alone, and the template's answers
+  test_config.py   load_config, the [http] table and every static refusal
+  test_servers.py  the tool sets read and the servers built, through mcp.Client
+                   in-process, the pass-through and the refusals that need a package
+  test_auth.py     the token variable and the bearer's answers
+  test_app.py      MCP sessions over the app in-process (httpx2's ASGITransport inside
+                   the lifespan), the Host check, the loopback refusals, serve_http with
+                   uvicorn's Server.run stubbed
+  test_cli.py      --stdio, --http (serve_http stubbed), the endpoint lines and exit
+                   status 2; no test binds a port
+docs/
+  host.example.toml  the sample config, loaded by the tests; its build needs the real
+                   sources it names
+Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --locked` of
+                   `all`, the non-root user xippios as USER 10001:10001, --http on
+                   0.0.0.0:8000
+.dockerignore      keeps .git, .venv, tests, .worktrees, the caches and any .env or
+                   .envrc out of the build context
+.github/workflows/
+  docker.yml       the host's own workflow beside the rendered ones: the image built from
+                   the checkout and its --help, on every pull request
+```
+
+Core's family check (`xippios.core.testing.family`) holds no repository of the general
+shape, and the host has no `_client` or `tasks` for it to import, so `tests/test_package.py`
+carries the checks that apply here.
