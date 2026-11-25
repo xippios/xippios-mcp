@@ -49,11 +49,11 @@ registers each package's tool set, narrowed by `Package.narrowed`, a
 `dataclasses.replace` copy with its caps cut to the kept tasks, read and write never
 mixed. Every refusal is core's `ConfigError` naming the file, the endpoint and the key;
 it repeats slugs, task names and a package's module names, but never the value of
-`token_env`, `auth` or `allow_remote`, nor the value of an unknown key. A `ValueError`
-or a `TypeError` by which core refuses a declaration while a tool set is built, at the
-package's import, by its `build()` or by the host's narrowed copy, is re-raised as
-`servers.BuildError`, a `ValueError`, with the file, the endpoint and the package
-prefixed. `token_env` names a variable ending in `_TOKEN`,
+`token_env`, `auth` or `allow_remote`, nor the value of an unknown key. Every
+`ValueError` and `TypeError` raised at a package's import, by its `build()` or by the
+host's narrowed copy, core's refusal of a declaration and a package's own error alike, is
+re-raised as `servers.BuildError`, a `ValueError`, with the file, the endpoint, the
+package and the error's class prefixed. `token_env` names a variable ending in `_TOKEN`,
 which the host reads once, when `--http` starts. An optional `[http]` table names
 `allowed_hosts` and `allowed_origins`.
 
@@ -102,7 +102,7 @@ import of the package, its tests and its scripts with `ast` and fails on any oth
 (ADR-0001, decision 5). Every `MCPServer` the host constructs is followed by
 `quiet_request_logging()`, `build_server` calls it itself, and the host calls it again
 before serving: constructing an `MCPServer` sets root logging to `INFO`, and httpx logs
-every request URL at `INFO`, which can carry a key or a tenant host (sdk-core ADR-0005).
+every request URL at `INFO`, which can carry a key or a tenant host (sdk-core ADR-0030).
 
 ## Layout
 
@@ -265,7 +265,7 @@ until the host flavour of the scaffold exists
   and passes every variable by name (https://github.com/xippios/xippios-mcp/issues/9).
 - Never add a task the host serves, an endpoint wrapper or a fixture here, and never
   rename or re-map a package's tools: the host serves what the packages define (sdk-core
-  ADR-0026, decision 1; sdk-core ADR-0003). The invented sources of `tests/example` are
+  ADR-0026, decision 1; sdk-core ADR-0028). The invented sources of `tests/example` are
   the tests' stand-ins for a source, never served by the host's package.
 - Never construct an `MCPServer` without calling `quiet_request_logging()` right after
   it (sdk-core ADR-0005).

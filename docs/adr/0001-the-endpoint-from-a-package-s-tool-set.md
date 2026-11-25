@@ -31,9 +31,10 @@ This record states how the host reads a package and builds an endpoint from 0.2.
    caps, its instructions and version, and its `read_only` and `loopback_only`. It reads no
    module-level `server`, no `tasks.__all__`, no `MCP_CAPS` and no bulk task of a package. A
    module without `build`, a `build()` that returns anything but a `ToolSet`, and a tool set
-   of the other kind than the entry names are refused at startup, and a `ValueError` that core
-   raises while the tool set is built is re-raised with the file, the endpoint and the
-   package.
+   of the other kind than the entry names are refused at startup. A `ValueError` or a
+   `TypeError` raised at the package's import or by its `build()` is re-raised with the file,
+   the endpoint, the package and the error's class: core refuses a declaration with these
+   two plain classes, so a package's own error of either class ends so too.
 2. **A package is known by its import path.** A slug has the form of conventions §1,
    lower-case letters and digits with its words joined by hyphens, and names the package at
    `xippios.<slug>`, each hyphen a dot; a package that is installed is served. The host's
