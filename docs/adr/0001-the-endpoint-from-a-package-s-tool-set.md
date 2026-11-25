@@ -80,8 +80,7 @@ an endpoint from 0.2.0 on.
    instructions gets no heading. A list narrows a package's tools and leaves its
    instructions whole, on an endpoint of one package and in a group alike, so they may name
    a tool that the endpoint does not serve: the host changes no text of a package, as it
-   renames none of its tools (sdk-core ADR-0026, decision 1). Before an endpoint's server is
-   built, the host applies each tool set's `apply_options` to its `option_defaults()`, the
+   renames none of its tools. Before an endpoint's server is built, the host applies each tool set's `apply_options` to its `option_defaults()`, the
    options that its entry point parses from an empty command line, so the package's options
    hold at the values its entry point holds without options, for the whole process as the
    entry point's do. A config sets no option of a package. An option without a default,
