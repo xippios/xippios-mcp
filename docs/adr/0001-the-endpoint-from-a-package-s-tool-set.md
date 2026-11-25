@@ -1,6 +1,7 @@
 # ADR-0001: The endpoint from a package's tool set
 
-Status: Accepted · Date: 2026-11-24 · Decided by https://github.com/xippios/sdk-core/issues/485
+Status: Accepted · Date: 2026-11-24 · Decided by https://github.com/xippios/sdk-core/issues/485 ·
+Amended 2026-11-25 by https://github.com/xippios/xippios-mcp/issues/27
 
 ## Context
 
@@ -47,14 +48,15 @@ an endpoint from 0.2.0 on.
    lower-case letters and digits with its words joined by hyphens, and names the package at
    `xippios.<slug>`, each hyphen a dot; a package that is installed is served. The host's
    extras say what `all` installs and what the hint for a missing package names.
-3. **Every endpoint builds a server of its own.** An endpoint of one package without a list
-   serves `build_server(tool_set)`, the server that the package's own entry point serves,
-   with its name, instructions, version and caps. A group, or an endpoint with an include or
-   exclude list, is one `MCPServer` named `xippios-<endpoint>`, on which `register_tasks`
-   registers each package's tool set; a list narrows a tool set by `dataclasses.replace`, its
-   caps cut to the kept tasks, which core checks as a new tool set. No package's module
-   object is mounted, so one package may serve several endpoints alone, and the check that
-   refused it leaves.
+3. **Every endpoint builds a server of its own.** An endpoint of one package serves
+   `build_server(tool_set)`, the server that the package's own entry point serves, with its
+   instructions, version and caps, under the package's name without a list; with an include
+   or exclude list it serves `build_server(narrowed, name="xippios-<endpoint>")` of the
+   narrowed tool set. A group is one `MCPServer` named `xippios-<endpoint>`, on which
+   `register_tasks` registers each package's tool set. A list narrows a tool set by
+   `dataclasses.replace`, its caps cut to the kept tasks, which core checks as a new tool
+   set. No package's module object is mounted, so one package may serve several endpoints
+   alone, and the check that refused it leaves.
 4. **The write rule and the hold to loopback are the tool sets'.** A server writes when its
    tool sets write, and it is held to loopback when one of them writes or is
    `loopback_only`. An endpoint with `auth = "none"` that is held is served over HTTP on a
@@ -81,8 +83,8 @@ an endpoint from 0.2.0 on.
    point holds without options, for the whole process as the entry point's do. A config sets
    no option of a package. An option without a default, which `option_defaults()` refuses
    with `ValueError`, and a `XippiosError` or `ValueError` that the hook raises are refused at
-   startup with the file, the endpoint and the package, where the entry point would exit with
-   status 2 (sdk-core ADR-0063, decision 4).
+   startup with the file, the endpoint, the package and the error's class, where the entry
+   point would exit with status 2 (sdk-core ADR-0063, decision 4).
 
 ## Consequences
 
