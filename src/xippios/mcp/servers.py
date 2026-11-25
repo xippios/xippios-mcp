@@ -30,10 +30,11 @@ __all__ = ["BuildError", "Built", "build_all", "build_endpoint"]
 class BuildError(ValueError):
     """Core refused a package's tool set while the host built an endpoint.
 
-    Its ``ValueError`` (a write task without ``confirm``, a cap whose task is absent),
-    raised when the package's ``build()`` or the host's narrowed copy makes the tool set,
-    re-raised with the file, the endpoint and the package prefixed, so the command line
-    tells it from an unrelated ``ValueError``.
+    Its ``ValueError`` (a write task without ``confirm``, a cap whose task is absent) or
+    ``TypeError`` (a declaration of the tasks module of another type, ``MCP_CAPS`` no
+    mapping say), raised when the package's ``build()`` or the host's narrowed copy makes
+    the tool set, re-raised with the file, the endpoint and the package prefixed, so the
+    command line tells it from an unrelated ``ValueError`` and names where it stands.
     """
 
 
@@ -80,8 +81,8 @@ def build_endpoint(endpoint: Endpoint) -> Built:
             no ``build()``, or its tool set is not the write or read one the entry names;
             or a name of an include or exclude list is no task of its package. The
             message names the file, the endpoint and the key.
-        BuildError: Core refused a package's tool set; the message names the file, the
-            endpoint and the package.
+        BuildError: Core refused a package's tool set, or a declaration of it; the message
+            names the file, the endpoint and the package.
     """
     packages = [_load(endpoint, ref) for ref in endpoint.packages]
     if len(packages) == 1 and not endpoint.include and not endpoint.exclude:
@@ -113,7 +114,9 @@ def _load(endpoint: Endpoint, ref: PackageRef) -> Package:
         return load_package(ref)
     except ConfigError as exc:
         raise refusal(endpoint.path, ["endpoints", endpoint.name, "packages"], str(exc)) from exc
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
+        # The two errors by which core refuses a declaration while the tool set is built,
+        # at the package's import or its build() (ToolSet.from_tasks); no other.
         raise BuildError(f"{endpoint.path}: endpoints.{endpoint.name}: {ref}: {exc}") from exc
 
 

@@ -50,9 +50,10 @@ registers each package's tool set, narrowed by `Package.narrowed`, a
 mixed. Every refusal is core's `ConfigError` naming the file, the endpoint and the key;
 it repeats slugs, task names and a package's module names, but never the value of
 `token_env`, `auth` or `allow_remote`, nor the value of an unknown key. A `ValueError`
-that core raises while a tool set is built, by the package's `build()` or the host's
-narrowed copy, is re-raised as `servers.BuildError`, a `ValueError`, with the file, the
-endpoint and the package prefixed. `token_env` names a variable ending in `_TOKEN`,
+or a `TypeError` by which core refuses a declaration while a tool set is built, at the
+package's import, by its `build()` or by the host's narrowed copy, is re-raised as
+`servers.BuildError`, a `ValueError`, with the file, the endpoint and the package
+prefixed. `token_env` names a variable ending in `_TOKEN`,
 which the host reads once, when `--http` starts. An optional `[http]` table names
 `allowed_hosts` and `allowed_origins`.
 

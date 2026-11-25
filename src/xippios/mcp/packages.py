@@ -123,6 +123,8 @@ def load_package(ref: PackageRef) -> Package:
             without it.
         ValueError: ``build()`` raised it: core refuses a declaration of the package's
             when its tool set is built, a write task without ``confirm`` say.
+        TypeError: ``build()`` raised it: core refuses a declaration of another type,
+            ``MCP_CAPS`` no mapping say.
     """
     path = import_path(ref.slug)
     try:
