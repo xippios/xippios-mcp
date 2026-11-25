@@ -170,4 +170,4 @@ counts its live calls as `none`.
   ADR-0026, decision 1; sdk-core ADR-0028). The invented sources of `tests/example` are
   the tests' stand-ins for a source, never served by the host's package.
 - Never construct an `MCPServer` without calling `quiet_request_logging()` right after
-  it (sdk-core ADR-0005).
+  it (sdk-core ADR-0030, decision 4).
