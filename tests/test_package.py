@@ -222,15 +222,47 @@ def _violations(source: str) -> list[str]:
     return list(dict.fromkeys(_found(source)))
 
 
+def _bound(tree: ast.Module) -> dict[str, str]:
+    """Each name that an import of ``tree`` binds to a path of core, by the path.
+
+    ``import xippios.core.mcp as m`` binds ``m``, ``from xippios.core import mcp`` binds
+    ``mcp`` and ``from xippios import core`` binds ``core``, each to the dotted path it
+    names; ``import xippios.core.mcp`` binds ``xippios``, which a chain spells whole.
+    """
+    bound: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and _in_core(alias.name):
+                    bound[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                dotted = f"{node.module}.{alias.name}"
+                if _in_core(dotted):
+                    bound[alias.asname or alias.name] = dotted
+    return bound
+
+
+def _resolved(dotted: str, bound: dict[str, str]) -> str:
+    """``dotted`` with its first name replaced by the path of core that an import bound."""
+    head, _, rest = dotted.partition(".")
+    if head not in bound:
+        return dotted
+    return f"{bound[head]}.{rest}" if rest else bound[head]
+
+
 def _found(source: str) -> Iterator[str]:
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    bound = _bound(tree)
+    for node in ast.walk(tree):
         found: list[str] = []
         if isinstance(node, ast.Import):
             found = [alias.name for alias in node.names if _in_core(alias.name)]
         elif isinstance(node, ast.ImportFrom) and node.module and _in_core(node.module):
             found = [f"{node.module}.{alias.name}" for alias in node.names]
         elif isinstance(node, ast.Attribute):
-            dotted = _dotted(node)
+            chain = _dotted(node)
+            dotted = None if chain is None else _resolved(chain, bound)
             if dotted is not None and dotted.startswith(f"{CORE}."):
                 # The longest pinned module the chain starts with, and the part after it.
                 parts = dotted.split(".")

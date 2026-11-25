@@ -28,13 +28,14 @@ __all__ = ["BuildError", "Built", "build_all", "build_endpoint"]
 
 
 class BuildError(ValueError):
-    """Core refused a package's tool set while the host built an endpoint.
+    """A package's import, its ``build()`` or the narrowed copy raised during the build.
 
-    Its ``ValueError`` (a write task without ``confirm``, a cap whose task is absent) or
-    ``TypeError`` (a declaration of the tasks module of another type, ``MCP_CAPS`` no
-    mapping say), raised when the package's ``build()`` or the host's narrowed copy makes
-    the tool set, re-raised with the file, the endpoint and the package prefixed, so the
-    command line tells it from an unrelated ``ValueError`` and names where it stands.
+    Every ``ValueError`` or ``TypeError`` raised there: core's refusal of a declaration, a
+    write task without ``confirm`` or ``MCP_CAPS`` no mapping say, and a package's own
+    error alike, since core raises its refusals as these plain classes and the host cannot
+    tell the two apart. Re-raised with the file, the endpoint, the package and the error's
+    class prefixed, so the command line exits 2 with a message that names where it stands
+    and what was raised; an error the build does not raise propagates as it is.
     """
 
 
@@ -81,8 +82,9 @@ def build_endpoint(endpoint: Endpoint) -> Built:
             no ``build()``, or its tool set is not the write or read one the entry names;
             or a name of an include or exclude list is no task of its package. The
             message names the file, the endpoint and the key.
-        BuildError: Core refused a package's tool set, or a declaration of it; the message
-            names the file, the endpoint and the package.
+        BuildError: A package's import, its ``build()`` or the narrowed copy raised a
+            ``ValueError`` or a ``TypeError``, core's refusal of a declaration among them;
+            the message names the file, the endpoint, the package and the error's class.
     """
     packages = [_load(endpoint, ref) for ref in endpoint.packages]
     if len(packages) == 1 and not endpoint.include and not endpoint.exclude:
@@ -115,9 +117,10 @@ def _load(endpoint: Endpoint, ref: PackageRef) -> Package:
     except ConfigError as exc:
         raise refusal(endpoint.path, ["endpoints", endpoint.name, "packages"], str(exc)) from exc
     except (TypeError, ValueError) as exc:
-        # The two errors by which core refuses a declaration while the tool set is built,
-        # at the package's import or its build() (ToolSet.from_tasks); no other.
-        raise BuildError(f"{endpoint.path}: endpoints.{endpoint.name}: {ref}: {exc}") from exc
+        # The two classes by which core refuses a declaration while the tool set is built
+        # (ToolSet.from_tasks); a package's own error of either class ends so too, its class
+        # named, since the two cannot be told apart. No other class is caught.
+        raise _refused(endpoint, ref, exc) from exc
 
 
 def _narrowed(endpoint: Endpoint, package: Package) -> ToolSet:
@@ -130,9 +133,14 @@ def _narrowed(endpoint: Endpoint, package: Package) -> ToolSet:
         key = ["endpoints", endpoint.name, *([kind, slug] if kind else ["packages"])]
         raise refusal(endpoint.path, key, str(exc)) from exc
     except ValueError as exc:
-        raise BuildError(
-            f"{endpoint.path}: endpoints.{endpoint.name}: {package.ref}: {exc}"
-        ) from exc
+        raise _refused(endpoint, package.ref, exc) from exc
+
+
+def _refused(endpoint: Endpoint, ref: PackageRef, exc: Exception) -> BuildError:
+    """The ``BuildError`` for ``exc``: the file, the endpoint, the package and its class."""
+    return BuildError(
+        f"{endpoint.path}: endpoints.{endpoint.name}: {ref}: {type(exc).__name__}: {exc}"
+    )
 
 
 def _instructions(endpoint: Endpoint, tool_sets: list[ToolSet]) -> str:
