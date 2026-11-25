@@ -5,9 +5,10 @@ that release (https://github.com/xippios/sdk-core/issues/485) by its `build()` a
 as the source's own server does: one endpoint for each source, one group of sdk-faostat's and
 sdk-usda-esr's read tool sets, and sdk-cashctrl's write tool set list their tools under the
 names and with the input schemas of the sources' own `server`. The list mode prints each
-endpoint with its tool count. One call of each source went through the host and sent no
-request: sdk-faostat and sdk-usda-esr answered from the lists they carry, and sdk-cashctrl
-refused an organisation that no variable declares. No key was in the environment of the run.
+endpoint with its tool count. One call of each source went through the host, and the run
+counted no request and no socket connection or lookup during it: sdk-faostat and sdk-usda-esr
+answered from the lists they carry, and sdk-cashctrl refused an organisation that no variable
+declares. No key was in the environment of the run.
 Core's candidate, the three sources' `build()` and `server`, and the host's own code fitted as
 they stand: nothing changed for the run, and it found no misfit.
 
@@ -131,7 +132,7 @@ cashctrl-write: write, 14 tools of cashctrl
 The test of the list mode asserts the same lines, each count taken from the tools that the
 source's own server lists.
 
-## One call of each source that sends nothing
+## One call of each source, with nothing counted
 
 Each call went through its source's endpoint as a client calls a tool, with none of the
 source's variables set: the run's environment held none, and the test removes each variable
@@ -192,31 +193,34 @@ carries, fetched on 2026-10-28, its 12 regions:
 }
 ```
 
-`cashctrl_list_currencies` with `{"org": "demo"}` was refused before any request, the answer
-flagged as an error, since no variable declares the organisation:
+`cashctrl_list_currencies` with `{"org": "demo"}` was refused, the answer flagged as an error
+and ending "Nothing was sent.", since no variable declares the organisation:
 
 ```text
 error: InvalidRequestError: unknown tenant 'demo'; no tenant is declared; set CASHCTRL_ORGS and, per name, CASHCTRL_<NAME>_SUBDOMAIN and CASHCTRL_<NAME>_API_KEY; 'demo' is declared by CASHCTRL_DEMO_SUBDOMAIN and CASHCTRL_DEMO_API_KEY alone. Nothing was sent.
 ```
 
-## How the run knows that nothing was sent
+## What the run counted
 
-1. Each call ran inside the test module's recorder, and it counted nothing. Its respx router
-   sits on httpcore's connection pools, through which every httpx client sends, the clients of
-   core by which the sources send among them, and answers each request itself, so none leaves;
-   it counted no request in any of the three calls. Python's audit events `socket.connect`,
-   `socket.getaddrinfo`, `socket.gethostbyname`, `socket.sendto` and `socket.sendmsg`, which a
-   connection or a lookup raises in any library, counted none either. The recorder's own test
-   counted one request through httpx and one lookup of a numeric host in the same run, so its
-   zeros are counts, not a blind spot.
-2. Below the recorder, core's pytest plugin, which the host's tests load, refuses every request
-   that reaches httpcore's pools in a test not marked `live` (sdk-core ADR-0035), so no request
-   could have left in this run.
-3. The answers say so themselves: the `meta.retrieved_at` of sdk-faostat's and sdk-usda-esr's
-   answers are the days their lists were fetched, about four weeks before the run, and sdk-cashctrl's
-   refusal ends "Nothing was sent." and names the variables that would declare `demo`, none of
-   which was set.
-4. The list mode builds every endpoint and calls no tool.
+1. Each call ran inside the test module's recorder. Its respx router sits on httpcore's
+   connection pools, where httpx's default transports hand over a request, and answers a
+   request that reaches it itself, without sending it: it counted no request in each of the
+   three calls. The audit events that CPython's `socket` module raises when it connects, looks
+   up a name or sends a datagram, `socket.connect`, `socket.getaddrinfo`,
+   `socket.gethostbyname`, `socket.sendto` and `socket.sendmsg`, counted none either. The
+   recorder's own test counted one request through httpx and one lookup of a numeric host in
+   the same run, so both counters count.
+2. Outside the recorder, core's pytest plugin, which the host's tests load, refuses a request
+   that reaches httpcore's connection pools in a test not marked `live` (sdk-core ADR-0035).
+3. Together, for this run: during the three calls no request reached httpcore's connection
+   pools, and no connection, lookup or datagram went through CPython's `socket` module. A way
+   out that passes neither is not counted.
+4. The answers agree with the counts: the `meta.retrieved_at` of sdk-faostat's and
+   sdk-usda-esr's answers are the days their lists were fetched, about four weeks before the
+   run, and sdk-cashctrl's refusal ends "Nothing was sent." and names the variables that would
+   declare `demo`, none of which was set.
+5. The list mode builds the config's five endpoints and calls no tool. No recorder ran around
+   it.
 
 ## What the run does not cover
 
