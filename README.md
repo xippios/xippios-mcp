@@ -25,7 +25,10 @@ The host runs on `xippios-core` 0.5 and serves every source package of the famil
 is installed beside it and released on that core minor: a package is named by its slug,
 `usda-nass`, and imported as `xippios.usda.nass`. No source has released on core 0.5 yet,
 so the host names no package as an extra, and `all` installs none; each source joins as
-an extra with a lower bound once it has.
+an extra with a lower bound once it has. Before those releases the host served
+sdk-faostat, sdk-cashctrl and sdk-usda-esr from their commits on core 0.5.0's candidate,
+as [the report of 2026-11-25](https://github.com/xippios/xippios-mcp/blob/main/docs/reports/2026-11-25-the-host-serves-the-three-proving-sources.md)
+records, and `tests/test_sources.py` serves each of them that is installed beside it.
 
 The tools of a package are those of its tool set, what its `mcp.build()` returns
 (`mcp_write.build()` for a write server): its tasks less its `BULK_TASKS`, which are
