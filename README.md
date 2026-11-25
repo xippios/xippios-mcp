@@ -2,8 +2,9 @@
 
 The self-hosted MCP host of the [xippios SDK family](https://github.com/xippios). It
 serves the MCP tools of the family's packages from one process, by endpoint and group:
-an endpoint mounts a package's own server, read or write, and a group combines several
-packages' tools on one endpoint, never read and write tools together. It runs on stdio
+an endpoint serves a package's tool set, read or write, as the package's own server
+does, and a group combines several packages' tools on one endpoint, never read and write
+tools together. It runs on stdio
 locally and on streamable HTTP on a server, each endpoint with its own auth, a bearer
 token by default; the secrets stay in the environment, never in the config file.
 
@@ -15,31 +16,20 @@ built from this repository, serves them from a container (see Docker).
 ## Install
 
 ```bash
-uv add "xippios-mcp[all]"          # the host with every package below
-uv add "xippios-mcp[usda-nass]"    # or one extra per package you serve
+uv add xippios-mcp xippios-usda-nass     # the host and each package it serves
 ```
 
 ## Packages
 
-Each package is an extra with a lower bound only, so the host installs every package at
-its latest release.
+The host runs on `xippios-core` 0.5 and serves every source package of the family that
+is installed beside it and released on that core minor: a package is named by its slug,
+`usda-nass`, and imported as `xippios.usda.nass`. No source has released on core 0.5 yet,
+so the host names no package as an extra, and `all` installs none; each source joins as
+an extra with a lower bound once it has.
 
-| Extra | Distribution | Lower bound | Servers | Tools |
-| --- | --- | --- | --- | --- |
-| `cashctrl` | `xippios-cashctrl` | `>=0.3.0` | read and write | 24 read, 11 write |
-| `comtrade` | `xippios-comtrade` | `>=0.2.0` | read | 19 |
-| `eurostat` | `xippios-eurostat` | `>=0.2.0` | read | 13 |
-| `faostat` | `xippios-faostat` | `>=0.1.0` | read | 7 |
-| `usda-esmis` | `xippios-usda-esmis` | `>=0.2.0` | read | 9 |
-| `usda-esr` | `xippios-usda-esr` | `>=0.2.0` | read | 10 |
-| `usda-gats` | `xippios-usda-gats` | `>=0.2.0` | read | 20 |
-| `usda-nass` | `xippios-usda-nass` | `>=0.2.0` | read | 16 |
-| `usda-psd` | `xippios-usda-psd` | `>=0.3.0` | read | 12 |
-
-The tools are each package's `tasks.__all__` (`tasks_write.__all__` for a write server)
-less its `BULK_TASKS`, which are Python-only, counted at the version of the lower bound;
-a later release may add tools. `all` installs the nine. `xippios-usda-wasde` joins
-later: its 0.1.1 needs `xippios-usda-esmis` below 0.2.
+The tools of a package are those of its tool set, what its `mcp.build()` returns
+(`mcp_write.build()` for a write server): its tasks less its `BULK_TASKS`, which are
+Python-only, each with its own result cap.
 
 ### The ceilings of usda-nass and usda-gats
 
@@ -71,9 +61,11 @@ packages = ["cashctrl:write"]
 auth = "none"
 ```
 
-- An endpoint that names one package and no list serves that package's own server, as
-  the package builds it: `xippios.<package>.mcp.server`, or `mcp_write.server` for
-  `<slug>:write`, with its instructions and result caps.
+- An endpoint that names one package and no list serves the server of that package's
+  tool set, `xippios.<package>.mcp.build()`, or `mcp_write.build()` for `<slug>:write`,
+  as the package's own entry point serves it: named `xippios-<slug>`, with its
+  instructions, version and result caps. Each endpoint has a server of its own, so one
+  package may serve several endpoints.
 - A group, several packages, or an endpoint with an `include` or `exclude` list is a
   server the host builds, named `xippios-<endpoint>`: each package's tools under their
   own names (`usda_nass_get_data`), with the package's result caps for the tools it
@@ -85,12 +77,14 @@ auth = "none"
   of the two, and an empty list is refused. A name that is no tool of the package is
   refused, a task in the package's `BULK_TASKS` among them, since a bulk task is
   Python-only and no tool.
+- A package's slug is lower-case letters and digits, its words joined by hyphens; one
+  that is not installed is refused with the package to install.
 - `auth` is `"bearer"` by default, or `"none"`. With the bearer, `token_env` names the
   environment variable that holds the token, a name ending in `_TOKEN`
   (`XIPPIOS_MCP_<ENDPOINT>_TOKEN`), and the token itself stays in the environment, never
   in the file. The host reads the variable once, when `--http` starts, and never on
   stdio or when it lists. `allow_remote` is `false` by default; it lets an `auth =
-  "none"` write endpoint beyond loopback (see The loopback rule).
+  "none"` endpoint that is held to loopback serve beyond it (see The loopback rule).
 - An optional `[http]` table names the `Host` and `Origin` values the HTTP transport
   accepts behind a reverse proxy (see Behind a reverse proxy).
 
@@ -100,25 +94,25 @@ Check a config before serving it:
 xippios-mcp --config host.toml
 ```
 
-It loads the file, builds every endpoint and prints one line per endpoint; for
+It loads the file, builds every endpoint and prints one line per endpoint, with the
+tool count of the packages installed; for
 [`docs/host.example.toml`](https://github.com/xippios/xippios-mcp/blob/main/docs/host.example.toml),
-the sample above, with the packages at the lower bounds:
+the sample above:
 
 ```text
-agriculture: read, 46 tools of usda-nass, usda-psd, comtrade
-accounting-write: write, 11 tools of cashctrl
+agriculture: read, <n> tools of usda-nass, usda-psd, comtrade
+accounting-write: write, <n> tools of cashctrl
 ```
 
 A key, package or task the host refuses stops it with exit status 2 and a message that
-names the file, the endpoint and the key. The list runs neither the mounted-once check
-nor the loopback check of Serving, which need `--http` and its `--host`.
+names the file, the endpoint and the key. The list runs no loopback check of Serving,
+which needs `--http` and its `--host`.
 
-A server the host builds carries none of the packages' own instructions: its
-instructions are one sentence naming its packages and their tool counts. No endpoint
-takes a package's command-line options, such as cashctrl's `--org` lock or the ceilings
-above, since the host runs no package's entry point. The package contract of the next
-template release gives the host what it needs to carry them, from the host's first minor
-after that release and `xippios-core` 0.4.0.
+An endpoint of one package carries that package's own instructions and version. A
+server the host builds for a group or a list carries none of the packages' own
+instructions: its instructions are one sentence naming its packages and their tool
+counts. No endpoint takes a package's command-line options, such as cashctrl's `--org`
+lock or the ceilings above, since the host runs no package's entry point.
 
 ## Serving
 
@@ -150,9 +144,7 @@ serves every endpoint of the config from one process, each at
 sample. `--host` defaults to `127.0.0.1` and `--port` to 8000; both need `--http`, and
 `--http` and `--stdio` exclude each other. Before it serves, the host reads each bearer
 endpoint's token and applies the checks below; a refusal exits with status 2 and serves
-nothing. A package's own server serves one HTTP endpoint: two endpoints that each name
-`usda-nass` alone are refused, and an `include` or `exclude` list on one of them makes
-its server one the host builds.
+nothing.
 
 ### The bearer
 
@@ -190,22 +182,15 @@ decision 10).
 
 ### The loopback rule
 
-An endpoint with `auth = "none"` that serves a write server, `cashctrl:write` for
-instance, carries no authentication, so `--http` serves it on a loopback `--host` only,
-`127.0.0.1`, `localhost` or `::1`, as a package's own entry point keeps its write server
-(sdk-core ADR-0014, decision 9). On another `--host` the host refuses to start unless
+A write server, `cashctrl:write` for instance, and a read server that its package holds
+to loopback, as sdk-google-mail holds its own, are held to loopback by their tool sets.
+An endpoint with `auth = "none"` that serves such a server, or a group with one such
+package, carries no authentication, so `--http` serves it on a loopback `--host` only,
+`127.0.0.1`, `localhost` or `::1`, as a package's own entry point keeps its server
+(sdk-core ADR-0063, decision 5). On another `--host` the host refuses to start unless
 the endpoint sets `allow_remote = true`, and then a gateway in front of it has to
-authenticate. A read endpoint with `auth = "none"`, and every bearer endpoint, is served
-on any host.
-
-A read server that its package holds to loopback, as sdk-google-mail holds its own, is
-not held there by the host's 0.1.0: the packages' loopback-only option is planned for
-`xippios-core` 0.4.0, for the host to read from its first minor after that release and
-the next template release. None of the nine packages 0.1.0 serves holds a read server to
-loopback, so the case cannot arise before a package that does joins, sdk-google-mail
-once it has a release and an extra.
-Until the host reads the option, keep an `auth = "none"` endpoint of such a package on a
-loopback `--host`, or give it the bearer.
+authenticate. Any other read endpoint with `auth = "none"`, and every bearer endpoint,
+is served on any host.
 
 ### Behind a reverse proxy
 
@@ -229,7 +214,7 @@ check.
 ## Docker
 
 The repository builds an image of the host with every package of `all`, at the versions
-`uv.lock` pins, the set the tests run against. 0.1.0 publishes no image to a registry:
+`uv.lock` pins, none until the sources release on `xippios-core` 0.5. 0.1.0 publishes no image to a registry:
 build it from a checkout.
 
 ```bash
@@ -269,9 +254,9 @@ checks the mounted config and lists its endpoints without serving them.
 
 Inside the container the host binds `0.0.0.0`, beyond loopback, so every endpoint is
 remote, whichever interface `-p` publishes the port on: give every endpoint the bearer.
-An `auth = "none"` write endpoint is refused there unless it sets `allow_remote = true`
-(see The loopback rule), and then nothing authenticates it but a gateway in front;
-prefer the bearer. Beyond loopback the mcp SDK checks no `Host` or `Origin` header, so
+An `auth = "none"` endpoint held to loopback is refused there unless it sets
+`allow_remote = true` (see The loopback rule), and then nothing authenticates it but a
+gateway in front; prefer the bearer. Beyond loopback the mcp SDK checks no `Host` or `Origin` header, so
 behind a reverse proxy the config's `[http]` table names the values to accept (see
 Behind a reverse proxy).
 

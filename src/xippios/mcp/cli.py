@@ -23,10 +23,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from xippios.core import ConfigError
-
-# Outside core's public surface: queue row 297 decides whether core 0.4.0 exports
-# quiet_request_logging from xippios.core.mcp.
-from xippios.core.mcp.server import quiet_request_logging
+from xippios.core.mcp import quiet_request_logging
 
 from xippios.mcp.app import build_app, serve_http
 from xippios.mcp.config import HostConfig, load_config
