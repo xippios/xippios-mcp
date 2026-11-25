@@ -77,14 +77,18 @@ an endpoint from 0.2.0 on.
    `xippios-<endpoint>`. A group's server shows the host's version, and its instructions open
    with the host's sentence, which names its packages with their tool counts, and then name
    each package's own under a heading of its slug, in the config's order; a package without
-   instructions gets no heading. Before an endpoint's server is built, the host applies each
-   tool set's `apply_options` to its `option_defaults()`, the options that its entry point
-   parses from an empty command line, so the package's options hold at the values its entry
-   point holds without options, for the whole process as the entry point's do. A config sets
-   no option of a package. An option without a default, which `option_defaults()` refuses
-   with `ValueError`, and a `XippiosError` or `ValueError` that the hook raises are refused at
-   startup with the file, the endpoint, the package and the error's class, where the entry
-   point would exit with status 2 (sdk-core ADR-0063, decision 4).
+   instructions gets no heading. A list narrows a package's tools and leaves its
+   instructions whole, on an endpoint of one package and in a group alike, so they may name
+   a tool that the endpoint does not serve: the host changes no text of a package, as it
+   renames none of its tools (sdk-core ADR-0026, decision 1). Before an endpoint's server is
+   built, the host applies each tool set's `apply_options` to its `option_defaults()`, the
+   options that its entry point parses from an empty command line, so the package's options
+   hold at the values its entry point holds without options, for the whole process as the
+   entry point's do. A config sets no option of a package. An option without a default,
+   which `option_defaults()` refuses with `ValueError`, and a `XippiosError` or `ValueError`
+   that the hook raises are refused at startup with the file, the endpoint, the package and
+   the error's class, where the entry point would exit with status 2 (sdk-core ADR-0063,
+   decision 4).
 
 ## Consequences
 
@@ -96,7 +100,8 @@ an endpoint from 0.2.0 on.
 - A read package that declares the hold to loopback, sdk-google-mail's, is held on an
   `auth = "none"` endpoint, where 0.1.0 left that to the operator.
 - An endpoint of one package shows the package's own instructions and version, with a list
-  too, and a group's instructions name each package's own under its slug.
+  too, and a group's instructions name each package's own under its slug. Both stand whole
+  under a list, so they may name a tool that the endpoint does not serve.
 - The host serves the ceilings that the packages' entry points serve without options,
   sdk-usda-nass's split of 5 years and sdk-usda-gats's series of 24 months, where 0.1.0
   served the 20 years and 60 months of their Python APIs, and a ceiling holds for every call

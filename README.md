@@ -75,6 +75,12 @@ auth = "none"
   result caps for the tools it keeps. Its instructions open with one sentence naming its
   packages and their tool counts, then give each package's own instructions under a
   heading of its slug, `## usda-nass`.
+- An `include` or `exclude` list narrows a package's tools and leaves its instructions
+  whole, on an endpoint of one package and in a group alike, so they may name a tool that
+  the endpoint does not serve, a listing tool they say to call first, say. The host does
+  not cut them: a package's instructions are its own prose, which the host could change
+  only by writing for the package, and the host serves what a package defines, its tools
+  under their names and its text as it stands.
 - Every endpoint applies its packages' option hooks with the defaults of their entry
   points, as those run without options (see The ceilings of usda-nass and usda-gats).
 - Read and write never mix: an endpoint's packages are all `<slug>:write` or none, and
