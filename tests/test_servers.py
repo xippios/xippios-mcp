@@ -305,6 +305,22 @@ def test_a_package_without_instructions_gets_no_heading(
     )
 
 
+def test_a_list_leaves_a_packages_instructions_whole(tmp_path: Path) -> None:
+    """The host changes no text of a package, so a list may drop a tool that the package's
+    instructions name: here example_list_regions, which they say to call first."""
+    own = example_tasks.MCP_INSTRUCTIONS
+    assert "example_list_regions" in own
+    alone = _build(tmp_path, 'packages = ["example"]\ninclude = { example = ["get_series"] }')
+    assert alone.tools == ("example_get_series",)
+    assert alone.server.instructions == own
+    group = _build(
+        tmp_path, 'packages = ["example", "example-api"]\nexclude = { example = ["list_regions"] }'
+    )
+    assert "example_list_regions" not in group.tools
+    assert group.server.instructions is not None
+    assert f"## example\n\n{own}" in group.server.instructions
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     "body",
