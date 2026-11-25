@@ -20,14 +20,14 @@ The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
 
 The optional ``[http]`` table names the ``Host`` and ``Origin`` header values the HTTP
 transport accepts, for a host behind a reverse proxy (ADR-0026, decision 5).
-``load_config`` checks the file's shape and nothing that needs a package: the known
-slugs, the task names and the servers are checked when the endpoints are built
-(``xippios.mcp.servers``). It reads no environment variable: ``token_env`` names one,
-and the bearer reads it when ``--http`` starts (conventions §7). Every refusal is a
-``ConfigError`` naming the file, the endpoint and the key. A message repeats slugs and
-task names, and from the build a package's ``server.name``, but never the value of
-``token_env``, ``auth`` or ``allow_remote``, nor the value of an unknown key. The build
-re-raises a refusal of core's ``register_tasks`` as ``BuildError``, a ``ValueError``,
+``load_config`` checks the file's shape and nothing that needs a package: a slug's
+form is checked here, and whether it is installed, its tool set and the task names when
+the endpoints are built (``xippios.mcp.servers``). It reads no environment variable:
+``token_env`` names one, and the bearer reads it when ``--http`` starts (conventions §7).
+Every refusal is a ``ConfigError`` naming the file, the endpoint and the key. A message
+repeats slugs and task names, and from the build a package's module names, but never the
+value of ``token_env``, ``auth`` or ``allow_remote``, nor the value of an unknown key.
+The build re-raises a refusal of core's tool set as ``BuildError``, a ``ValueError``,
 with the file, the endpoint and the package prefixed.
 """
 
@@ -48,6 +48,9 @@ WRITE_SUFFIX = ":write"
 """The suffix that names a package's write server, ``cashctrl:write``."""
 
 _ENDPOINT_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+# A slug as conventions §1 forms one; the host imports xippios.<slug, each hyphen a dot>,
+# so no other text may name a module path.
+_SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 # A token variable ends in _TOKEN, so the family's leak rule names it by its suffix, as it
 # names _API_KEY, _REFRESH_TOKEN and _SECRET (gap, row 309 (e)).
 _TOKEN_VARIABLE = re.compile(r"[A-Z][A-Z0-9_]*_TOKEN")
@@ -63,8 +66,8 @@ class PackageRef:
     """One entry of an endpoint's ``packages``: a package and which of its servers.
 
     Attributes:
-        slug: The package's slug, the host's extra and the source's slug, e.g.
-            ``"usda-nass"``.
+        slug: The package's slug, the source's slug, e.g. ``"usda-nass"``: lower-case
+            letters and digits, its words joined by hyphens.
         write: True for ``<slug>:write``, the package's write server.
     """
 
@@ -260,6 +263,13 @@ def _packages(path: Path, here: list[str], value: Any) -> tuple[PackageRef, ...]
             )
         if not slug:
             raise refusal(path, key, f"{item}: names no package")
+        if not _SLUG.fullmatch(slug):
+            raise refusal(
+                path,
+                key,
+                f"{item}: a slug is lower-case letters and digits, its words joined by "
+                'hyphens, e.g. "usda-nass"',
+            )
         refs.append(PackageRef(slug=slug, write=bool(colon)))
     if len({ref.write for ref in refs}) > 1:
         raise refusal(

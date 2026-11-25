@@ -1,27 +1,24 @@
-"""The mount: one MCP server per endpoint, the package's own or one the host builds.
+"""The mount: one MCP server per endpoint, built from its packages' tool sets.
 
-An endpoint that names one package and no tool list serves that package's own server,
-the object ``<path>.mcp.server`` (``<path>.mcp_write.server`` for ``<slug>:write``) as
-the package built it, its instructions, caps and read and write split included
-(ADR-0026, decision 3). A group, several packages, or an endpoint with an include or
-exclude list is one ``MCPServer`` the host builds: per package, the kept names of
-``tasks.__all__`` registered with core's ``register_tasks`` under the config's slug,
-which equals the package's source slug, so the tools keep their names
-(``usda_nass_get_data``), and ``MCP_CAPS`` cut to the kept tasks first, since
-``register_tasks`` refuses a cap whose task is absent (Johannes, 2026-10-29, G5 question
-2; queue row 306). The host wraps no tool and reads no answer: an error answer reaches the
-client as the package's tool returned it (ADR-0026, decision 6).
+Every endpoint gets a server of its own, built from the tool sets its packages' ``build()``
+returns (sdk-core ADR-0063, decision 4; ADR-0001 of this package). An endpoint that names
+one package and no tool list serves ``build_server(tool_set)``, the server the package's
+own entry point serves: named ``xippios-<source>``, with the package's instructions,
+version and caps. A group, several packages, or an endpoint with an include or exclude
+list is one ``MCPServer`` named ``xippios-<endpoint>``, on which ``register_tasks``
+registers each package's tool set, narrowed to the list first, so the tools keep their
+names (``usda_nass_get_data``) and their package's caps. Whether the server writes and
+whether it is held to loopback come from the tool sets' ``read_only`` and
+``loopback_only`` (sdk-core ADR-0063, decision 5). The host wraps no tool and reads no
+answer: an error answer reaches the client as the package's tool returned it (ADR-0026,
+decision 6).
 """
 
 from dataclasses import dataclass
 
 from mcp.server.mcpserver import MCPServer
-from xippios.core import ConfigError
-from xippios.core.mcp import tool_name
-
-# Outside core's public surface: queue row 297 decides whether core 0.4.0 exports
-# register_tasks, is_write_server and quiet_request_logging from xippios.core.mcp.
-from xippios.core.mcp.server import is_write_server, quiet_request_logging, register_tasks
+from xippios.core import ConfigError, tool_name
+from xippios.core.mcp import ToolSet, build_server, quiet_request_logging, register_tasks
 
 from xippios.mcp._version import __version__
 from xippios.mcp.config import Endpoint, HostConfig, PackageRef, refusal
@@ -31,11 +28,14 @@ __all__ = ["BuildError", "Built", "build_all", "build_endpoint"]
 
 
 class BuildError(ValueError):
-    """Core's ``register_tasks`` refused a package's tasks for a server the host builds.
+    """A package's import, its ``build()`` or the narrowed copy raised during the build.
 
-    Its ``ValueError`` (a cap whose task is absent, a write task without ``confirm``),
-    re-raised with the file, the endpoint and the package prefixed, so the command line
-    tells it from an unrelated ``ValueError``.
+    Every ``ValueError`` or ``TypeError`` raised there: core's refusal of a declaration, a
+    write task without ``confirm`` or ``MCP_CAPS`` no mapping say, and a package's own
+    error alike, since core raises its refusals as these plain classes and the host cannot
+    tell the two apart. Re-raised with the file, the endpoint, the package and the error's
+    class prefixed, so the command line exits 2 with a message that names where it stands
+    and what was raised; an error the build does not raise propagates as it is.
     """
 
 
@@ -44,15 +44,17 @@ class Built:
     """An endpoint's server, ready to serve.
 
     Attributes:
-        server: The package's own server, or the one the host built.
-        write: True for a write server (core's ``is_write_server``).
-        host_built: True when the host built the server: a group or a tool list.
+        server: The server the host built for the endpoint.
+        write: True for a write server: its tool sets write.
+        held: True when a tool set of it writes or is ``loopback_only``, so the server is
+            held to loopback unless authenticated or allowed (sdk-core ADR-0063,
+            decision 5).
         tools: The tool names it serves, e.g. ``("usda_nass_get_data", ...)``.
     """
 
     server: MCPServer
     write: bool
-    host_built: bool
+    held: bool
     tools: tuple[str, ...]
 
 
@@ -70,23 +72,43 @@ def build_all(config: HostConfig) -> dict[str, Built]:
 
 
 def build_endpoint(endpoint: Endpoint) -> Built:
-    """The server ``endpoint`` serves, checked against its packages.
+    """The server ``endpoint`` serves, built from its packages' tool sets.
 
     Args:
         endpoint: An endpoint of ``load_config``'s result.
 
     Raises:
-        ConfigError: A package is unknown, not installed or has no write server for
-            ``:write``; a name of an include or exclude list is no tool of its package;
-            or a package's own server is not the write or read server the entry names.
-            The message names the file, the endpoint and the key.
-        BuildError: ``register_tasks`` refused a package's tasks, a cap or a write task
-            without ``confirm``; the message names the file, the endpoint and the package.
+        ConfigError: A package is not installed, has no write server for ``:write`` or
+            no ``build()``, or its tool set is not the write or read one the entry names;
+            or a name of an include or exclude list is no task of its package. The
+            message names the file, the endpoint and the key.
+        BuildError: A package's import, its ``build()`` or the narrowed copy raised a
+            ``ValueError`` or a ``TypeError``, core's refusal of a declaration among them;
+            the message names the file, the endpoint, the package and the error's class.
     """
     packages = [_load(endpoint, ref) for ref in endpoint.packages]
     if len(packages) == 1 and not endpoint.include and not endpoint.exclude:
-        return _package_built(endpoint, packages[0])
-    return _host_built(endpoint, packages)
+        tool_set = packages[0].tool_set
+        return _built(build_server(tool_set), [tool_set])
+    tool_sets = [_narrowed(endpoint, package) for package in packages]
+    server = MCPServer(
+        f"xippios-{endpoint.name}",
+        version=__version__,
+        instructions=_instructions(endpoint, tool_sets),
+    )
+    quiet_request_logging()
+    for tool_set in tool_sets:
+        register_tasks(server, tool_set)
+    return _built(server, tool_sets)
+
+
+def _built(server: MCPServer, tool_sets: list[ToolSet]) -> Built:
+    return Built(
+        server=server,
+        write=any(not tool_set.read_only for tool_set in tool_sets),
+        held=any(not tool_set.read_only or tool_set.loopback_only for tool_set in tool_sets),
+        tools=tuple(tool_name(ts.source, fn) for ts in tool_sets for fn in ts.tasks),
+    )
 
 
 def _load(endpoint: Endpoint, ref: PackageRef) -> Package:
@@ -94,67 +116,38 @@ def _load(endpoint: Endpoint, ref: PackageRef) -> Package:
         return load_package(ref)
     except ConfigError as exc:
         raise refusal(endpoint.path, ["endpoints", endpoint.name, "packages"], str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        # The two classes by which core refuses a declaration while the tool set is built
+        # (ToolSet.from_tasks); a package's own error of either class ends so too, its class
+        # named, since the two cannot be told apart. No other class is caught.
+        raise _refused(endpoint, ref, exc) from exc
 
 
-def _package_built(endpoint: Endpoint, package: Package) -> Built:
-    # The package's own object, shared by every endpoint that mounts it alone: its
-    # streamable_http_app replaces the server's one session manager, so the HTTP
-    # transport (`app.build_app`) refuses mounting one package-built server on two
-    # endpoints.
-    server = package.server
-    if is_write_server(server) != package.ref.write:
-        kind = "a write server" if is_write_server(server) else "a read server"
-        raise refusal(
-            endpoint.path,
-            ["endpoints", endpoint.name, "packages"],
-            f"{package.ref}: the package's server {server.name} is {kind}",
-        )
-    tools = tuple(tool_name(package.ref.slug, package.functions[name]) for name in package.tools)
-    return Built(server=server, write=package.ref.write, host_built=False, tools=tools)
-
-
-def _kept(endpoint: Endpoint, package: Package) -> tuple[str, ...]:
+def _narrowed(endpoint: Endpoint, package: Package) -> ToolSet:
     slug = package.ref.slug
     include, exclude = endpoint.include.get(slug), endpoint.exclude.get(slug)
     try:
-        return package.kept(include=include, exclude=exclude)
+        return package.narrowed(include=include, exclude=exclude)
     except ConfigError as exc:
         kind = "include" if include is not None else "exclude" if exclude is not None else None
         key = ["endpoints", endpoint.name, *([kind, slug] if kind else ["packages"])]
         raise refusal(endpoint.path, key, str(exc)) from exc
+    except ValueError as exc:
+        raise _refused(endpoint, package.ref, exc) from exc
 
 
-def _host_built(endpoint: Endpoint, packages: list[Package]) -> Built:
-    selected = [(package, _kept(endpoint, package)) for package in packages]
-    server = MCPServer(
-        f"xippios-{endpoint.name}",
-        version=__version__,
-        instructions=_instructions(endpoint, [(p.ref.slug, len(kept)) for p, kept in selected]),
+def _refused(endpoint: Endpoint, ref: PackageRef, exc: Exception) -> BuildError:
+    """The ``BuildError`` for ``exc``: the file, the endpoint, the package and its class."""
+    return BuildError(
+        f"{endpoint.path}: endpoints.{endpoint.name}: {ref}: {type(exc).__name__}: {exc}"
     )
-    quiet_request_logging()
-    names: list[str] = []
-    for package, kept in selected:
-        caps = {name: cap for name, cap in (package.caps or {}).items() if name in kept}
-        try:
-            names += register_tasks(
-                server,
-                package.ref.slug,
-                [package.functions[name] for name in kept],
-                caps=caps or None,
-                read_only=not package.ref.write,
-            )
-        except ValueError as exc:
-            raise BuildError(
-                f"{endpoint.path}: endpoints.{endpoint.name}: {package.ref}: {exc}"
-            ) from exc
-    return Built(server=server, write=endpoint.write, host_built=True, tools=tuple(names))
 
 
-def _instructions(endpoint: Endpoint, counts: list[tuple[str, int]]) -> str:
+def _instructions(endpoint: Endpoint, tool_sets: list[ToolSet]) -> str:
     """One sentence on what the endpoint serves, from its packages and their tool counts."""
-    parts = [f"{slug} ({count})" for slug, count in counts]
+    parts = [f"{tool_set.source} ({len(tool_set.tasks)})" for tool_set in tool_sets]
     served = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
-    total = sum(count for _, count in counts)
+    total = sum(len(tool_set.tasks) for tool_set in tool_sets)
     kind = "write" if endpoint.write else "read-only"
     sentence = (
         f"The xippios-mcp endpoint {endpoint.name} serves {total} {kind} tools of {served}, "

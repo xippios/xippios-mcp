@@ -1,50 +1,39 @@
-"""The mount: each endpoint's server, the package's own or one the host builds.
+"""The mount: each endpoint's server, built from its packages' tool sets.
 
-Every server is reached through ``mcp.Client(server)`` in-process, as core's
-``mcp_call`` reaches one, so the middleware runs as it does for a real client. No tool
-reaches an upstream: the calls below are refused before a tool runs, and core's plugin
-refuses the network in every test anyway. The expected counts are computed from the
-packages' ``tasks.py`` here, never typed in.
+The packages are the invented sources under ``tests/example``: ``example``, with a read and
+a write tool set, and the nested ``example-api``, a read tool set alone. Every server is
+reached through ``mcp.Client(server)`` in-process, as core's ``mcp_call`` reaches one, so
+the middleware runs as it does for a real client. The expected names are read from the
+packages' own ``build()`` here, never typed in where the package gives them.
 """
 
 import sys
 from importlib import import_module
-from importlib.util import find_spec
 from pathlib import Path
 from types import ModuleType
 
 import pytest
-import xippios.cashctrl.mcp
-import xippios.cashctrl.mcp_write
-import xippios.usda.nass.mcp
+import xippios.example.api.mcp
+import xippios.example.mcp
+import xippios.example.mcp_write
 from mcp import Client
-from mcp.types import Tool
-from xippios.cashctrl import tasks as cashctrl_tasks
-from xippios.cashctrl import tasks_write as cashctrl_tasks_write
-from xippios.comtrade import tasks as comtrade_tasks
-from xippios.core import ConfigError
-
-# Outside core's public surface: queue row 297 decides whether core 0.4.0 exports
-# is_write_server from xippios.core.mcp.
-from xippios.core.mcp.server import is_write_server
-from xippios.core.testing import mcp_call_text
-from xippios.usda.nass import tasks as nass_tasks
-from xippios.usda.psd import tasks as psd_tasks
+from mcp.types import TextContent, Tool
+from xippios.core import ConfigError, ResultCap, tool_name
+from xippios.core.mcp import ToolSet
+from xippios.core.testing import mcp_call, mcp_call_text
+from xippios.example import tasks as example_tasks
+from xippios.example import tasks_write as example_tasks_write
 
 import xippios.mcp.packages
 from xippios.mcp import __version__
-from xippios.mcp.config import load_config
-from xippios.mcp.packages import import_path, known_slugs
-from xippios.mcp.servers import BuildError, Built, build_all, build_endpoint
-
-ROOT = Path(__file__).resolve().parents[1]
-SAMPLE = ROOT / "docs" / "host.example.toml"
+from xippios.mcp.config import PackageRef, load_config
+from xippios.mcp.packages import import_path, load_package
+from xippios.mcp.servers import BuildError, Built, build_endpoint
 
 
-def _tools(tasks: ModuleType) -> list[str]:
-    """The task names of ``tasks.__all__`` that become tools: ``BULK_TASKS`` left out."""
-    bulk: frozenset[str] = getattr(tasks, "BULK_TASKS", frozenset())
-    return [name for name in tasks.__all__ if name not in bulk]
+def _tools(tool_set: ToolSet) -> list[str]:
+    """The tool names of ``tool_set``, as core names them."""
+    return [tool_name(tool_set.source, fn) for fn in tool_set.tasks]
 
 
 def _build(tmp_path: Path, body: str, name: str = "agriculture") -> Built:
@@ -69,34 +58,134 @@ async def _listed(built: Built) -> dict[str, Tool]:
     return tools
 
 
+# What the host reads of a package: its tool set, by its build() (sdk-core ADR-0063,
+# decision 4).
+
+
+def test_a_package_is_read_by_its_build() -> None:
+    package = load_package(PackageRef("example"))
+    assert isinstance(package.tool_set, ToolSet)
+    assert package.tool_set.read_only is True
+    assert package.tools == tuple(_tools(xippios.example.mcp.build()))
+    assert package.tasks == ("get_series", "list_regions")
+
+
+def test_a_write_package_is_read_by_the_write_build() -> None:
+    package = load_package(PackageRef("example", write=True))
+    assert package.tool_set.read_only is False
+    assert package.tools == ("example_create_thing", "example_delete_thing")
+
+
+def test_a_nested_package_by_its_import_path() -> None:
+    assert import_path("example-api") == "xippios.example.api"
+    package = load_package(PackageRef("example-api"))
+    assert package.tool_set.source == "example-api"
+    assert package.tools == ("example_api_get_record", "example_api_list_kinds")
+
+
+@pytest.mark.parametrize("slug", ["example", "example-api"])
+def test_a_tool_set_is_built_without_the_packages_variables(
+    slug: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The host holds no ``_client.py``, so core's plugin sets no placeholder of a key for
+    the packages it loads: building a tool set needs none of the variables that the package
+    contract's ``mcp.ENV_VARS`` names, each removed here, never read."""
+    adapter = import_module(f"{import_path(slug)}.mcp")
+    for variable in adapter.ENV_VARS:
+        monkeypatch.delenv(variable.name_or_pattern, raising=False)
+    assert load_package(PackageRef(slug)).tools
+
+
+def test_the_narrowed_tool_set_drops_the_caps_of_the_tasks_it_drops() -> None:
+    package = load_package(PackageRef("example"))
+    assert dict(package.tool_set.caps) == dict(example_tasks.MCP_CAPS)
+    kept = package.narrowed(exclude=frozenset({"list_regions"}))
+    assert [fn.__name__ for fn in kept.tasks] == ["get_series"]
+    assert dict(kept.caps) == {}
+    included = package.narrowed(include=frozenset({"list_regions"}))
+    assert [fn.__name__ for fn in included.tasks] == ["list_regions"]
+    assert dict(included.caps) == {"list_regions": example_tasks.MCP_CAPS["list_regions"]}
+    assert (included.source, included.version, included.instructions) == (
+        package.tool_set.source,
+        package.tool_set.version,
+        package.tool_set.instructions,
+    )
+
+
+# One package without a list: its tool set's server, as its entry point builds it.
+
+
 @pytest.mark.anyio
-async def test_one_package_serves_its_own_server(tmp_path: Path) -> None:
-    built = _build(tmp_path, 'packages = ["usda-nass"]')
-    assert built.server is xippios.usda.nass.mcp.server
-    assert built.host_built is False
-    assert built.write is False
+async def test_one_package_serves_its_tool_sets_server(tmp_path: Path) -> None:
+    built = _build(tmp_path, 'packages = ["example"]')
+    own = xippios.example.mcp.server
+    assert built.server is not own  # built by the host, never the package's module object
+    assert (built.server.name, built.server.version) == (own.name, own.version)
+    assert built.server.name == "xippios-example"
+    assert built.server.instructions == example_tasks.MCP_INSTRUCTIONS
+    assert (built.write, built.held) == (False, False)
     tools = await _listed(built)
-    assert len(tools) == len(_tools(nass_tasks))
+    assert list(tools) == _tools(xippios.example.mcp.build())
+    async with Client(own) as client:
+        theirs = {tool.name: tool for tool in (await client.list_tools()).tools}
+    assert {name: tool.input_schema for name, tool in tools.items()} == {
+        name: tool.input_schema for name, tool in theirs.items()
+    }
+
+
+def test_each_endpoint_builds_a_server_of_its_own(tmp_path: Path) -> None:
+    first = _build(tmp_path, 'packages = ["example"]')
+    second = _build(tmp_path, 'packages = ["example"]')
+    assert first.server is not second.server
+
+
+@pytest.mark.anyio
+async def test_a_bulk_task_is_no_tool(tmp_path: Path) -> None:
+    assert "download_regions" in example_tasks.__all__
+    assert "download_regions" in example_tasks.BULK_TASKS
+    tools = await _listed(_build(tmp_path, 'packages = ["example"]'))
+    assert "example_download_regions" not in tools
+
+
+@pytest.mark.anyio
+async def test_the_write_server_alone(tmp_path: Path) -> None:
+    built = _build(tmp_path, 'packages = ["example:write"]', name="accounting-write")
+    assert (built.write, built.held) == (True, True)
+    assert built.server.name == "xippios-example"
+    assert built.server.instructions == example_tasks_write.MCP_INSTRUCTIONS
+    tools = await _listed(built)
+    assert list(tools) == ["example_create_thing", "example_delete_thing"]
+    for tool in tools.values():
+        assert tool.annotations is not None
+        assert (tool.annotations.read_only_hint, tool.annotations.destructive_hint) == (
+            False,
+            True,
+        )
+
+
+@pytest.mark.anyio
+async def test_a_read_package_that_declares_the_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(example_tasks, "MCP_LOOPBACK_ONLY", True, raising=False)
+    built = _build(tmp_path, 'packages = ["example"]')
+    assert (built.write, built.held) == (False, True)
+    group = _build(tmp_path, 'packages = ["example-api", "example"]')
+    assert (group.write, group.held) == (False, True)
+
+
+# A group, or one package with a list: one server the host builds, a tool set per package.
 
 
 @pytest.mark.anyio
 async def test_a_group_with_an_exclude_list(tmp_path: Path) -> None:
-    body = (
-        'packages = ["usda-nass", "usda-psd", "comtrade"]\nexclude = { usda-nass = ["get_counts"] }'
-    )
+    body = 'packages = ["example", "example-api"]\nexclude = { example = ["get_series"] }'
     built = _build(tmp_path, body)
-    assert built.host_built is True
-    assert built.write is False
-    assert is_write_server(built.server) is False
+    assert (built.write, built.held) == (False, False)
     tools = await _listed(built)
-    expected = len(_tools(nass_tasks)) + len(_tools(psd_tasks)) + len(_tools(comtrade_tasks)) - 1
-    assert len(tools) == expected
-    assert "usda_nass_get_counts" not in tools
-    assert "comtrade_get_counts" in tools  # the list names usda-nass's task only
-    for prefix, tasks in [("usda_nass_", nass_tasks), ("usda_psd_", psd_tasks)]:
-        named = {name for name in tools if name.startswith(prefix)}
-        assert named == {f"{prefix}{task}" for task in _tools(tasks)} - {"usda_nass_get_counts"}
-    assert all(name.startswith(("usda_nass_", "usda_psd_", "comtrade_")) for name in tools)
+    expected = _tools(xippios.example.mcp.build()) + _tools(xippios.example.api.mcp.build())
+    assert list(tools) == [name for name in expected if name != "example_get_series"]
+    assert "example_api_get_record" in tools  # the list names example's task only
     for tool in tools.values():
         assert tool.annotations is not None
         assert tool.annotations.read_only_hint is True
@@ -104,7 +193,7 @@ async def test_a_group_with_an_exclude_list(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_a_host_built_server_names_itself_and_its_packages(tmp_path: Path) -> None:
-    built = _build(tmp_path, 'packages = ["usda-nass", "usda-psd", "comtrade"]')
+    built = _build(tmp_path, 'packages = ["example", "example-api"]')
     assert built.server.name == "xippios-agriculture"
     assert built.server.version == __version__
     async with Client(built.server) as client:
@@ -112,152 +201,151 @@ async def test_a_host_built_server_names_itself_and_its_packages(tmp_path: Path)
     assert info is not None
     assert info.name == "xippios-agriculture"
     assert instructions is not None
-    for slug in ("usda-nass", "usda-psd", "comtrade"):
-        assert slug in instructions
-    assert f"usda-nass ({len(_tools(nass_tasks))})" in instructions
+    assert "example (2) and example-api (2)" in instructions
     assert "read-only" in instructions
 
 
 @pytest.mark.anyio
 async def test_an_include_list(tmp_path: Path) -> None:
-    built = _build(
-        tmp_path,
-        'packages = ["usda-nass"]\ninclude = { usda-nass = ["get_data", "list_param_values"] }',
-    )
-    assert built.host_built is True
-    assert built.server is not xippios.usda.nass.mcp.server
-    tools = await _listed(built)
-    assert set(tools) == {"usda_nass_get_data", "usda_nass_list_param_values"}
+    built = _build(tmp_path, 'packages = ["example"]\ninclude = { example = ["list_regions"] }')
+    assert built.server.name == "xippios-agriculture"
+    assert list(await _listed(built)) == ["example_list_regions"]
 
 
 @pytest.mark.anyio
-async def test_the_write_server_alone_is_the_packages_own(tmp_path: Path) -> None:
-    built = _build(tmp_path, 'packages = ["cashctrl:write"]', name="accounting-write")
-    assert built.server is xippios.cashctrl.mcp_write.server
-    assert built.host_built is False
-    assert built.write is True
-    assert is_write_server(built.server) is True
-    tools = await _listed(built)
-    assert len(tools) == len(_tools(cashctrl_tasks_write))
+async def test_a_kept_tool_keeps_its_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The package's own cap of a tool it keeps applies on a server the host builds."""
+    body = 'packages = ["example", "example-api"]'
+    answer = await mcp_call(_build(tmp_path, body).server, "example_list_regions", {})
+    assert [region["code"] for region in answer["data"]] == ["N", "S"]
+    monkeypatch.setitem(example_tasks.MCP_CAPS, "list_regions", ResultCap(max_rows=1))
+    answer = await mcp_call(_build(tmp_path, body).server, "example_list_regions", {})
+    assert [region["code"] for region in answer["data"]] == ["N"]
 
 
 @pytest.mark.anyio
 async def test_the_write_server_with_an_exclude_list(tmp_path: Path) -> None:
     built = _build(
         tmp_path,
-        'packages = ["cashctrl:write"]\nexclude = { cashctrl = ["delete_person"] }',
+        'packages = ["example:write"]\nexclude = { example = ["delete_thing"] }',
         name="accounting-write",
     )
-    assert built.host_built is True
-    assert built.write is True
-    assert is_write_server(built.server) is True
+    assert (built.write, built.held) == (True, True)
     assert built.server.name == "xippios-accounting-write"
     assert built.server.instructions is not None
     assert "confirm" in built.server.instructions
     tools = await _listed(built)
-    assert len(tools) == len(_tools(cashctrl_tasks_write)) - 1
-    assert "cashctrl_delete_person" not in tools
+    assert list(tools) == ["example_create_thing"]
     for tool in tools.values():
         assert tool.annotations is not None
         assert tool.annotations.read_only_hint is False
 
 
-@pytest.mark.anyio
-async def test_the_caps_are_cut_to_the_kept_tasks(tmp_path: Path) -> None:
-    caps = cashctrl_tasks.MCP_CAPS
-    assert "list_history" in caps
-    # Uncut, register_tasks would refuse the cap of the excluded task with a ValueError.
-    built = _build(tmp_path, 'packages = ["cashctrl"]\nexclude = { cashctrl = ["list_history"] }')
-    tools = await _listed(built)
-    assert "cashctrl_list_history" not in tools
-    assert len(tools) == len(_tools(cashctrl_tasks)) - 1
-    assert {f"cashctrl_{name}" for name in caps if name != "list_history"} <= set(tools)
-
-
-def test_the_sample_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("XIPPIOS_MCP_AGRICULTURE_TOKEN", raising=False)
-    built = build_all(load_config(SAMPLE))
-    assert list(built) == ["agriculture", "accounting-write"]
-    assert built["agriculture"].host_built is True
-    assert built["agriculture"].write is False
-    assert built["accounting-write"].server is xippios.cashctrl.mcp_write.server
-    assert built["accounting-write"].write is True
-
-
-# The pass-through (ADR-0026, decision 6): arguments a tool's schema refuses are answered
-# by core's middleware before the tool runs, as the family's text (conventions §8), and
-# the host leaves the answer as it is.
+# The pass-through (ADR-0026, decision 6): an answer reaches the client as the package's
+# tool gives it, a refusal of core's middleware and a task's own error alike.
 
 
 @pytest.mark.anyio
-async def test_a_refusal_on_a_package_built_server(tmp_path: Path) -> None:
-    built = _build(tmp_path, 'packages = ["usda-nass"]')
-    assert built.host_built is False
-    text = await mcp_call_text(built.server, "usda_nass_list_param_values", {})
-    assert text.startswith("error: InvalidRequestError: param:"), text
+@pytest.mark.parametrize(
+    "body", ['packages = ["example"]', 'packages = ["example", "example-api"]']
+)
+async def test_an_undeclared_argument_is_refused_before_the_tool_runs(
+    tmp_path: Path, body: str
+) -> None:
+    built = _build(tmp_path, body)
+    async with Client(built.server) as client:
+        result = await client.call_tool("example_get_series", {"region": "N"})
+    assert result.is_error is True
+    [content] = result.content
+    assert isinstance(content, TextContent)
+    text = content.text
+    assert text.startswith("error: InvalidRequestError: region: Not an argument of this tool"), text
+    assert text.endswith("Nothing was sent.")
 
 
 @pytest.mark.anyio
-async def test_a_refusal_on_a_host_built_server(tmp_path: Path) -> None:
-    built = _build(tmp_path, 'packages = ["usda-nass", "comtrade"]')
-    assert built.host_built is True
-    text = await mcp_call_text(built.server, "usda_nass_list_param_values", {"param": ["a"]})
-    assert text.startswith("error: InvalidRequestError: param:"), text
+async def test_a_tasks_error_is_flagged_as_the_package_gives_it(tmp_path: Path) -> None:
+    built = _build(tmp_path, 'packages = ["example", "example-api"]')
+    async with Client(built.server) as client:
+        result = await client.call_tool("example_get_series", {"region_code": "X"})
+    assert result.is_error is True
+    [content] = result.content
+    assert isinstance(content, TextContent)
+    assert content.text.startswith(
+        "error: InvalidRequestError: region_code 'X': no region of example"
+    )
+    assert "the tool example_list_regions" in content.text
+
+
+@pytest.mark.anyio
+async def test_a_preview_without_confirm(tmp_path: Path) -> None:
+    built = _build(tmp_path, 'packages = ["example:write"]', name="accounting-write")
+    text = await mcp_call_text(built.server, "example_create_thing", {"name": "first"})
+    assert '"performed":false' in text.replace(" ", "")
 
 
 # The refusals that need the package.
 
 
-def test_an_unknown_package(tmp_path: Path) -> None:
-    message = _refused(tmp_path, 'packages = ["usda-wasde"]')
-    assert "endpoints.agriculture.packages: usda-wasde: no package of the host's" in message
-    assert ", ".join(known_slugs()) in message
+def test_a_package_that_is_not_installed(tmp_path: Path) -> None:
+    message = _refused(tmp_path, 'packages = ["nothing"]')
+    assert "endpoints.agriculture.packages: nothing: not installed" in message
+    assert "install xippios-nothing" in message
 
 
-def test_an_unknown_task(tmp_path: Path) -> None:
-    message = _refused(
-        tmp_path, 'packages = ["usda-nass"]\nexclude = { usda-nass = ["get_count"] }'
-    )
-    assert "endpoints.agriculture.exclude.usda-nass: get_count: no task of usda-nass" in message
-    assert ", ".join(_tools(nass_tasks)) in message
+def test_the_install_hint_names_the_hosts_extra(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Simulated with a ``None`` entry in ``sys.modules``, as an absent package raises."""
+    monkeypatch.setitem(sys.modules, "xippios.example", None)
+    monkeypatch.setattr(xippios.mcp.packages, "_extras", lambda: frozenset({"example"}))
+    message = _refused(tmp_path, 'packages = ["example"]')
+    assert "endpoints.agriculture.packages: example: not installed" in message
+    assert "install xippios-mcp[example]" in message
 
 
-def test_a_tool_name_is_no_task_name(tmp_path: Path) -> None:
-    message = _refused(
-        tmp_path, 'packages = ["usda-nass"]\ninclude = { usda-nass = ["usda_nass_get_data"] }'
-    )
-    assert "endpoints.agriculture.include.usda-nass: usda_nass_get_data: no task" in message
-    assert "without the source prefix" in message
-
-
-@pytest.mark.parametrize("kind", ["include", "exclude"])
-def test_a_bulk_task_is_no_tool(tmp_path: Path, kind: str) -> None:
-    bulk = sorted(cashctrl_tasks.BULK_TASKS)[0]
-    message = _refused(tmp_path, f'packages = ["cashctrl"]\n{kind} = {{ cashctrl = ["{bulk}"] }}')
-    assert f"endpoints.agriculture.{kind}.cashctrl: {bulk}: in cashctrl's BULK_TASKS" in message
-    assert "no tool" in message
-
-
-def test_a_list_that_keeps_no_tool(tmp_path: Path) -> None:
-    every = ", ".join(f'"{name}"' for name in _tools(nass_tasks))
-    message = _refused(tmp_path, f'packages = ["usda-nass"]\nexclude = {{ usda-nass = [{every}] }}')
-    assert "endpoints.agriculture.exclude.usda-nass: keeps no tool of usda-nass" in message
+def test_a_package_without_an_mcp_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "xippios.example.mcp", None)
+    message = _refused(tmp_path, 'packages = ["example"]')
+    expected = "endpoints.agriculture.packages: example: xippios.example has no xippios.example.mcp"
+    assert expected in message
 
 
 def test_write_on_a_package_without_a_write_server(tmp_path: Path) -> None:
-    message = _refused(tmp_path, 'packages = ["usda-nass:write"]')
-    assert "endpoints.agriculture.packages: usda-nass:write: usda-nass has no write server" in (
-        message
-    )
+    message = _refused(tmp_path, 'packages = ["example-api:write"]')
+    assert (
+        "endpoints.agriculture.packages: example-api:write: example-api has no write server "
+        "(xippios.example.api.mcp_write)"
+    ) in message
 
 
-def test_a_missing_extra(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Simulated with a ``None`` entry in ``sys.modules``, which makes the import raise
-    ``ModuleNotFoundError`` for the package, as an absent package does."""
-    monkeypatch.setitem(sys.modules, "xippios.usda.nass", None)
-    message = _refused(tmp_path, 'packages = ["usda-nass"]')
-    assert "endpoints.agriculture.packages: usda-nass: not installed" in message
-    assert "install xippios-mcp[usda-nass]" in message
+def test_a_package_without_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(xippios.example.mcp, "build")
+    message = _refused(tmp_path, 'packages = ["example"]')
+    assert "example: xippios.example.mcp holds no build()" in message
+
+
+def test_a_build_that_returns_a_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The form before the package contract, a server where the tool set belongs."""
+    monkeypatch.setattr(xippios.example.mcp, "build", lambda: xippios.example.mcp.server)
+    message = _refused(tmp_path, 'packages = ["example"]')
+    assert "example: xippios.example.mcp.build() returns MCPServer, not a ToolSet" in message
+
+
+def test_a_write_build_that_returns_a_read_tool_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(xippios.example.mcp_write, "build", xippios.example.mcp.build)
+    message = _refused(tmp_path, 'packages = ["example:write"]')
+    assert "example:write: xippios.example.mcp_write.build() returns a read tool set" in message
+
+
+def test_a_read_build_that_returns_a_write_tool_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(xippios.example.mcp, "build", xippios.example.mcp_write.build)
+    message = _refused(tmp_path, 'packages = ["example"]')
+    assert "example: xippios.example.mcp.build() returns a write tool set" in message
 
 
 def test_a_broken_install_is_no_config_error(
@@ -270,52 +358,104 @@ def test_a_broken_install_is_no_config_error(
 
     monkeypatch.setattr(xippios.mcp.packages, "import_module", import_module)
     with pytest.raises(ModuleNotFoundError):
-        _build(tmp_path, 'packages = ["usda-nass"]')
+        _build(tmp_path, 'packages = ["example"]')
 
 
-def test_a_package_server_that_is_not_the_one_named(
+def test_an_unknown_task(tmp_path: Path) -> None:
+    message = _refused(tmp_path, 'packages = ["example"]\nexclude = { example = ["get_serie"] }')
+    assert "endpoints.agriculture.exclude.example: get_serie: no task of example" in message
+    assert "one of: get_series, list_regions" in message
+
+
+def test_a_tool_name_is_no_task_name(tmp_path: Path) -> None:
+    message = _refused(
+        tmp_path, 'packages = ["example"]\ninclude = { example = ["example_get_series"] }'
+    )
+    assert "endpoints.agriculture.include.example: example_get_series: no task" in message
+    assert "without the source prefix" in message
+
+
+@pytest.mark.parametrize("kind", ["include", "exclude"])
+def test_a_bulk_task_named_in_a_list_is_refused(tmp_path: Path, kind: str) -> None:
+    message = _refused(
+        tmp_path, f'packages = ["example"]\n{kind} = {{ example = ["download_regions"] }}'
+    )
+    expected = f"endpoints.agriculture.{kind}.example: download_regions: no task of example"
+    assert expected in message
+    assert "a task of BULK_TASKS is no tool" in message
+
+
+def test_a_list_that_keeps_no_tool(tmp_path: Path) -> None:
+    message = _refused(
+        tmp_path, 'packages = ["example"]\nexclude = { example = ["get_series", "list_regions"] }'
+    )
+    assert "endpoints.agriculture.exclude.example: keeps no tool of example" in message
+
+
+def create_thing(name: str) -> None:
+    """A write task without ``confirm``, which core's tool set refuses when it is built."""
+
+
+def test_a_refusal_of_the_tool_set_names_the_file_endpoint_and_package(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(xippios.cashctrl.mcp_write, "server", xippios.cashctrl.mcp.server)
-    message = _refused(tmp_path, 'packages = ["cashctrl:write"]')
-    assert "endpoints.agriculture.packages: cashctrl:write: the package's server" in message
-    assert "is a read server" in message
-
-
-def create_person(org: str) -> None:
-    """A write task without ``confirm``, which ``register_tasks`` refuses."""
-
-
-def test_a_refusal_of_register_tasks_names_the_file_endpoint_and_package(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(cashctrl_tasks_write, "create_person", create_person)
+    monkeypatch.setattr(example_tasks_write, "create_thing", create_thing)
     with pytest.raises(BuildError) as refused:
-        _build(
-            tmp_path,
-            'packages = ["cashctrl:write"]\nexclude = { cashctrl = ["delete_person"] }',
-            name="accounting-write",
-        )
+        _build(tmp_path, 'packages = ["example:write"]', name="accounting-write")
     assert isinstance(refused.value, ValueError)
     assert str(refused.value).startswith(
-        f"{tmp_path / 'host.toml'}: endpoints.accounting-write: cashctrl:write: "
-        "cashctrl_create_person: no parameter confirm"
+        f"{tmp_path / 'host.toml'}: endpoints.accounting-write: example:write: ValueError: "
+        "example_create_thing: no parameter confirm"
     )
 
 
-@pytest.mark.parametrize("slug", known_slugs())
-def test_every_task_name_is_its_functions_name(slug: str) -> None:
-    """The lists and MCP_CAPS are keyed by ``__name__``, as core's cap check reads them."""
-    path = import_path(slug)
-    names = ["tasks", "tasks_write"] if find_spec(f"{path}.tasks_write") else ["tasks"]
-    for tasks in [import_module(f"{path}.{name}") for name in names]:
-        for name in tasks.__all__:
-            assert getattr(tasks, name).__name__ == name, f"{tasks.__name__}.{name}"
-
-
-def test_a_package_without_a_module_level_server(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("declaration", "value", "message"),
+    [
+        pytest.param(
+            "MCP_CAPS", ["list_regions"], "xippios.example.tasks.MCP_CAPS is a mapping", id="caps"
+        ),
+        pytest.param(
+            "MCP_INSTRUCTIONS", 3, "xippios.example.tasks.MCP_INSTRUCTIONS is text", id="text"
+        ),
+        pytest.param(
+            "MCP_LOOPBACK_ONLY",
+            "yes",
+            "xippios.example.tasks.MCP_LOOPBACK_ONLY is True or",
+            id="hold",
+        ),
+    ],
+)
+def test_a_declaration_of_the_wrong_type_is_a_build_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declaration: str, value: object, message: str
 ) -> None:
-    monkeypatch.delattr(xippios.usda.nass.mcp, "server")
-    message = _refused(tmp_path, 'packages = ["usda-nass"]')
-    assert "xippios.usda.nass.mcp holds no module-level server" in message
+    """Core refuses it with a ``TypeError`` while the tool set is built (sdk-core ADR-0063,
+    decision 7), which the host names with the file, the endpoint and the package."""
+    monkeypatch.setattr(example_tasks, declaration, value, raising=False)
+    for body in ('packages = ["example"]', 'packages = ["example-api", "example"]'):
+        with pytest.raises(BuildError) as refused:
+            _build(tmp_path, body)
+        assert isinstance(refused.value.__cause__, TypeError)
+        assert str(refused.value).startswith(
+            f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: TypeError: {message}"
+        )
+
+
+@pytest.mark.parametrize("error", [ValueError, TypeError])
+def test_a_packages_own_error_names_its_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    """Core raises its refusals as plain ``ValueError`` and ``TypeError``, so the host cannot
+    tell them from a package's own: each ends as a refusal that names its class."""
+
+    def build() -> ToolSet:
+        raise error("unsupported operand type(s) for +: 'int' and 'str'")
+
+    monkeypatch.setattr(xippios.example.mcp, "build", build)
+    with pytest.raises(BuildError) as refused:
+        _build(tmp_path, 'packages = ["example"]')
+    assert isinstance(refused.value.__cause__, error)
+    assert str(refused.value) == (
+        f"{tmp_path / 'host.toml'}: endpoints.agriculture: example: {error.__name__}: "
+        "unsupported operand type(s) for +: 'int' and 'str'"
+    )

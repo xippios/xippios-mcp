@@ -21,35 +21,39 @@ https://github.com/xippios/sdk-core/issues/172).
 | Repository | `xippios/xippios-mcp`; PyPI `xippios-mcp` |
 | Import path | `xippios.mcp`; `src/xippios/` is a PEP 420 namespace package (conventions §1) |
 | Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required; `--stdio ENDPOINT` serves one endpoint on stdio, `--http` (with `--host`, default `127.0.0.1`, and `--port`, default 8000) every endpoint at `/<name>/mcp`; without either it loads the config, builds every endpoint and prints one line per endpoint; a refusal exits with status 2 |
-| Core | `xippios-core[mcp]~=0.3.0`, one minor (conventions §12), and `xippios-core[testing]~=0.3.0` in the dev group; `mcp`, `starlette` and `uvicorn`, which the host imports itself, with lower bounds at core's lock (conventions §11) |
-| Sources | extras, not dependencies, each with a `>=` floor and no upper bound (sdk-core ADR-0026, decision 9): `cashctrl` (`xippios-cashctrl>=0.3.0`), `comtrade` (`>=0.2.0`), `eurostat` (`>=0.2.0`), `faostat` (`>=0.1.0`), `usda-esmis` (`>=0.2.0`), `usda-esr` (`>=0.2.0`), `usda-gats` (`>=0.2.0`), `usda-nass` (`>=0.2.0`), `usda-psd` (`>=0.3.0`); `all` is their union. `usda-wasde` joins later: its 0.1.1 bounds `xippios-usda-esmis` below 0.2, so the ten together do not resolve |
+| Core | `xippios-core[mcp]~=0.5.0`, one minor (conventions §12), and `xippios-core[testing]~=0.5.0` in the dev group; `mcp`, `starlette` and `uvicorn`, which the host imports itself, with lower bounds at core's lock (conventions §11) |
+| Sources | extras, not dependencies, each with a `>=` floor at the source's first release on core 0.5 and no upper bound (sdk-core ADR-0026, decision 9), and `all` their union. No source has released on core 0.5 yet, so the manifest names none and `all` is empty; a source that is installed is served all the same (ADR-0001, decision 2) |
 
-### What 0.1.0 reads of a package
+### What the host reads of a package
 
-By sdk-core ADR-0026, decision 8: `xippios.<pkg>.mcp.server`
-(`xippios.<pkg>.mcp_write.server` for a write server) and its `server.name`, as the
-packages have them today. For a server the host builds itself, a group or an endpoint
-with a tool list, it reads `tasks.__all__`, `tasks_write.__all__` and `MCP_CAPS`, and
-the slug it passes to `register_tasks` is the config's package key (the distribution
-slug, equal to the package's `SOURCE`), never `server.name` (sdk-core ADR-0026,
-amendment 2026-10-30, part (a)). The package contract of template v0.4.0, a public
-`build(**options)` among it, is the host's interface from its first minor after core
-0.4.0 and template v0.4.0, not from 0.2.0 (sdk-core ADR-0026, amendment 2026-10-30,
-part (e); https://github.com/xippios/sdk-template/issues/81).
+Its tool set, by the package contract (ADR-0001; sdk-core ADR-0063, decision 4): the
+host imports `xippios.<slug>`, each hyphen of the slug a dot, and calls
+`<path>.mcp.build()`, or `<path>.mcp_write.build()` for `<slug>:write`, without
+arguments. The `ToolSet` it returns holds the package's tools alone, its bulk tasks left
+out, named `tool_name(tool_set.source, fn)` for each `fn` of `tool_set.tasks`, with
+their caps, the package's instructions and version, its option hooks, and `read_only`
+and `loopback_only`. The host reads no module-level `server`, no `tasks.__all__`, no
+`MCP_CAPS` and no bulk task. A package is known by its import path, not by the host's
+extras: a slug of conventions §1's form that is installed is served, and the extras say
+what `all` installs and what the hint for a missing package names (`packages.py`).
 
 ### The config
 
 `load_config` reads a TOML file of `[endpoints.<name>]` tables (`packages`, `include` or
 `exclude` per package by exact task name, `auth`, `token_env`, `allow_remote`) and checks
-its shape; `build_all` checks what needs the packages and builds the servers. One package
-without a list mounts the package's own server object; a group or a listed endpoint is an
-`MCPServer` named `xippios-<endpoint>` that the host builds with `register_tasks` under
-the package's slug, `MCP_CAPS` cut to the kept tasks, read and write never mixed. Every
-refusal is core's `ConfigError` naming the file, the endpoint and the key; it repeats
-slugs, task names and a package's `server.name`, but never the value of `token_env`,
-`auth` or `allow_remote`, nor the value of an unknown key. A `ValueError` from
-`register_tasks` is re-raised as `servers.BuildError`, a `ValueError`, with the file, the
-endpoint and the package prefixed. `token_env` names a variable ending in `_TOKEN`,
+its shape, a slug's form among it; `build_all` checks what needs the packages and builds
+the servers, a server of its own for every endpoint (ADR-0001, decision 3). One package
+without a list is `build_server(tool_set)`, the server its entry point serves; a group or
+a listed endpoint is an `MCPServer` named `xippios-<endpoint>` on which `register_tasks`
+registers each package's tool set, narrowed by `Package.narrowed`, a
+`dataclasses.replace` copy with its caps cut to the kept tasks, read and write never
+mixed. Every refusal is core's `ConfigError` naming the file, the endpoint and the key;
+it repeats slugs, task names and a package's module names, but never the value of
+`token_env`, `auth` or `allow_remote`, nor the value of an unknown key. Every
+`ValueError` and `TypeError` raised at a package's import, by its `build()` or by the
+host's narrowed copy, core's refusal of a declaration and a package's own error alike, is
+re-raised as `servers.BuildError`, a `ValueError`, with the file, the endpoint, the
+package and the error's class prefixed. `token_env` names a variable ending in `_TOKEN`,
 which the host reads once, when `--http` starts. An optional `[http]` table names
 `allowed_hosts` and `allowed_origins`.
 
@@ -58,17 +62,14 @@ which the host reads once, when `--http` starts. An optional `[http]` table name
 `--stdio ENDPOINT` runs that endpoint's server on stdio, without auth and without reading
 a token variable. `--http` builds one Starlette app (`app.build_app`): each endpoint's
 `streamable_http_app` mounted at `/<name>` with the SDK's `/mcp` path, every session
-manager entered in the app's one lifespan, served by uvicorn (`app.serve_http`). Before
-it mounts, it refuses an `auth = "none"` write endpoint (core's `is_write_server`) on a
-bind host beyond loopback without `allow_remote = true` (sdk-core ADR-0026, decision 5;
-https://github.com/xippios/xippios-mcp/issues/6), and a package's own server on two
-endpoints, since `streamable_http_app` replaces the server's one session manager
-(https://github.com/xippios/xippios-mcp/issues/8). The loopback hosts are a private copy
-of core's `_LOOPBACK_HOSTS`, `app._LOOPBACK_HOSTS`, until core carries the
-`loopback_only` option (https://github.com/xippios/sdk-core/issues/167), as
-sdk-google-mail carries one (sdk-core ADR-0023, decisions 2 and 4); a test keeps it equal
-to core's. The `[http]` table becomes the SDK's `TransportSecuritySettings`; without it the
-SDK's default for the bind host applies. A bearer endpoint is wrapped in `auth.Bearer`,
+manager entered in the app's one lifespan, served by uvicorn (`app.serve_http`). Every
+endpoint has a server of its own, so `streamable_http_app`, which replaces a server's one
+session manager, never meets a server twice. Before it mounts, it refuses an
+`auth = "none"` endpoint held to loopback, `Built.held`, true when a tool set of it writes
+or is `loopback_only`, on a bind host outside core's `LOOPBACK_HOSTS` without
+`allow_remote = true` (sdk-core ADR-0026, decision 5; ADR-0063, decision 5;
+https://github.com/xippios/xippios-mcp/issues/6). The `[http]` table becomes the SDK's
+`TransportSecuritySettings`; without it the SDK's default for the bind host applies. A bearer endpoint is wrapped in `auth.Bearer`,
 a pure ASGI wrapper that holds the token's SHA-256 digest (`auth.token_digest` reads the
 variable once), compares with `hmac.compare_digest`, answers 401 with `WWW-Authenticate:
 Bearer realm="xippios-mcp"` (`error="invalid_token"` for a wrong token) and no
@@ -90,16 +91,18 @@ environment (https://github.com/xippios/xippios-mcp/issues/9). `ci.yml`'s `docke
 builds it and runs `--help`; 0.1.0 pushes no image to a registry (sdk-core ADR-0026,
 decision 2).
 
-### Core internals
+### Core's names
 
-The host takes `register_tasks`, `is_write_server` and `quiet_request_logging` from
-`xippios.core.mcp.server`, and `is_bulk_task` from `xippios.core._tasks`, outside core's
-public surface (the five `__all__` lists of core's `__init__.py` files); each such import
-carries a comment that says so, until core decides whether `xippios.core.mcp` exports
-them (https://github.com/xippios/sdk-core/issues/170). Every `MCPServer` the host
-constructs is followed by `quiet_request_logging()`, and the host calls it again before
-serving: constructing an `MCPServer` sets root logging to `INFO`, and httpx logs every
-request URL at `INFO`, which can carry a key or a tenant host (sdk-core ADR-0005).
+The host takes every name of core from one of core's six pinned lists, the `__all__` of
+the six `__init__.py` files of `xippios.core`, by that list's module path, and no private
+name: `ToolSet`, `build_server`, `register_tasks`, `LOOPBACK_HOSTS` and
+`quiet_request_logging` from `xippios.core.mcp`, and `ConfigError` and `tool_name` from
+`xippios.core` (sdk-core ADR-0063, decision 4). `tests/test_package.py` reads every
+import of the package, its tests and its scripts with `ast` and fails on any other
+(ADR-0001, decision 5). Every `MCPServer` the host constructs is followed by
+`quiet_request_logging()`, `build_server` calls it itself, and the host calls it again
+before serving: constructing an `MCPServer` sets root logging to `INFO`, and httpx logs
+every request URL at `INFO`, which can carry a key or a tenant host (sdk-core ADR-0030).
 
 ## Layout
 
@@ -115,30 +118,35 @@ src/xippios/mcp/
                    HttpConfig and the static checks
   auth.py          the bearer: token_digest (the token variable, read once) and Bearer,
                    the ASGI wrapper that answers 401
-  app.py           build_app: the loopback and mounted-once checks, the transport
-                   security, one Mount per endpoint and the lifespan; serve_http (uvicorn)
-  packages.py      known_slugs (the host's extras), import_path, load_package: a
-                   package's tasks, server and caps, and the task-name checks
-  servers.py       build_endpoint and build_all: the package's own server or one the
-                   host builds (Built)
+  app.py           build_app: the loopback check, the transport security, one Mount per
+                   endpoint and the lifespan; serve_http (uvicorn)
+  packages.py      import_path, load_package: a package's tool set by its build(), and
+                   Package.narrowed, the copy under a tool list
+  servers.py       build_endpoint and build_all: a server of its own for each endpoint,
+                   one package's or a group's (Built)
 scripts/
   adr_index.py     writes docs/adr.md and docs/adr.json from the records in docs/adr/;
                    --check fails while either is stale
 tests/
   conftest.py      enables xippios.core.testing.plugin, which keeps the run offline
+  example/         the invented sources the tests serve, xippios.example and the nested
+                   xippios.example.api, on pytest's pythonpath and mypy's path; they ship
+                   in no distribution
   test_package.py  the host's own checks: the namespace level, py.typed, __version__, the
-                   core bound, the extras' floors and their union, the entry point, the CLI
+                   core bound, the extras' floors and their union, the entry point, the
+                   CLI, and core imported by its pinned lists alone
   test_config.py   load_config, the [http] table and every static refusal
-  test_servers.py  the mount through mcp.Client in-process, the pass-through and the
-                   refusals that need a package
+  test_servers.py  the tool sets read and the servers built, through mcp.Client
+                   in-process, the pass-through and the refusals that need a package
   test_auth.py     the token variable and the bearer's answers
   test_app.py      MCP sessions over the app in-process (httpx2's ASGITransport inside
-                   the lifespan), the Host check, the loopback and mounted-once
-                   refusals, serve_http with uvicorn's Server.run stubbed
+                   the lifespan), the Host check, the loopback refusals, serve_http with
+                   uvicorn's Server.run stubbed
   test_cli.py      --stdio, --http (serve_http stubbed), the endpoint lines and exit
                    status 2; no test binds a port
 docs/
-  host.example.toml  the sample config, loaded and built by the tests
+  host.example.toml  the sample config, loaded by the tests; its build needs the real
+                   sources it names
   adr/             this package's design decisions, one NNNN-<slug>.md record each, laid
                    out in its README.md
   adr.md           the index of the decisions, written by scripts/adr_index.py, never by
@@ -170,8 +178,8 @@ that apply here.
 ## Commands
 
 ```bash
-uv sync --all-extras               # the host with every source package
-uv run pytest                      # offline; no tool reaches an upstream
+uv sync --all-extras               # the host, its dev tools and every source of `all`
+uv run pytest                      # offline, on the invented sources of tests/example
 
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
@@ -182,8 +190,9 @@ docker build -t xippios-mcp .      # the image, as ci.yml's docker job builds it
 ```
 
 The offline run is core's plugin's (sdk-core ADR-0013): it refuses the network in every
-test not marked `live`, so nothing reaches an upstream though every source package is
-installed.
+test not marked `live`, so nothing reaches an upstream, and the tests serve the invented
+sources of `tests/example`, which send no request, so they wait for no real source
+(ADR-0001, decision 6).
 The host has no live tests and no `live.yml`: the packages' own live runs cover their
 tasks.
 
@@ -254,9 +263,10 @@ until the host flavour of the scaffold exists
   stay in the environment (conventions §7; sdk-core ADR-0026, decision 2).
 - Never put a config, a key or a token into the image: the operator mounts the config
   and passes every variable by name (https://github.com/xippios/xippios-mcp/issues/9).
-- Never add a task, an endpoint wrapper or a fixture here, and never rename or re-map a
-  package's tools: the host serves what the packages define (sdk-core ADR-0026,
-  decision 1; sdk-core ADR-0003).
+- Never add a task the host serves, an endpoint wrapper or a fixture here, and never
+  rename or re-map a package's tools: the host serves what the packages define (sdk-core
+  ADR-0026, decision 1; sdk-core ADR-0028). The invented sources of `tests/example` are
+  the tests' stand-ins for a source, never served by the host's package.
 - Never construct an `MCPServer` without calling `quiet_request_logging()` right after
   it (sdk-core ADR-0005).
 - Never add `src/xippios/__init__.py` (sdk-core ADR-0006).

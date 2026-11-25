@@ -5,7 +5,8 @@ Requests reach the Starlette app in-process through httpx2's ``ASGITransport``, 
 runs no lifespan, so each test enters the app's lifespan itself; MCP sessions run on the
 mcp SDK's own streamable-HTTP client over that transport. No test binds a port: uvicorn
 is reached only with ``Server.run`` stubbed. The token below is a test value set with
-``monkeypatch.setenv``; it never leaves the test.
+``monkeypatch.setenv``; it never leaves the test. The packages are the invented sources
+under ``tests/example``.
 """
 
 import contextlib
@@ -17,15 +18,15 @@ from typing import Any
 import httpx2
 import pytest
 import uvicorn
-import xippios.usda.nass.mcp
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from xippios.core import ConfigError
-from xippios.core.mcp import cli as core_cli
+from xippios.core.mcp import LOOPBACK_HOSTS
+from xippios.example import tasks as example_tasks
 
-from xippios.mcp.app import _LOOPBACK_HOSTS, build_app, serve_http, transport_security
+from xippios.mcp.app import build_app, serve_http, transport_security
 from xippios.mcp.config import HttpConfig, load_config
 from xippios.mcp.servers import build_all
 
@@ -46,13 +47,15 @@ MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
 
 TWO = f"""
 [endpoints.agriculture]
-packages = ["usda-nass", "comtrade"]
+packages = ["example", "example-api"]
 token_env = "{VARIABLE}"
 
 [endpoints.open]
-packages = ["usda-nass"]
+packages = ["example"]
 auth = "none"
 """
+
+OPEN = '[endpoints.open]\npackages = ["example"]\nauth = "none"\n'
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -128,7 +131,8 @@ async def test_each_endpoint_at_its_path_with_its_auth(
 
         async with _session(transport, "/open/mcp") as mcp:  # auth = "none": no header
             assert mcp.server_info is not None
-            assert mcp.server_info.name == xippios.usda.nass.mcp.server.name
+            assert mcp.server_info.name == "xippios-example"
+            assert mcp.instructions == example_tasks.MCP_INSTRUCTIONS
             listed = await mcp.list_tools()
         assert sorted(tool.name for tool in listed.tools) == sorted(built["open"].tools)
 
@@ -139,7 +143,7 @@ async def test_each_endpoint_at_its_path_with_its_auth(
 
 @pytest.mark.anyio
 async def test_a_raw_initialize_on_an_open_endpoint(tmp_path: Path) -> None:
-    app = _app(tmp_path, '[endpoints.open]\npackages = ["usda-nass"]\nauth = "none"\n')
+    app = _app(tmp_path, OPEN)
     async with _served(app) as transport:
         response = await _post(transport, "/open/mcp")
     assert response.status_code == 200
@@ -148,7 +152,7 @@ async def test_a_raw_initialize_on_an_open_endpoint(tmp_path: Path) -> None:
 @pytest.mark.anyio
 async def test_the_loopback_default_refuses_a_foreign_host(tmp_path: Path) -> None:
     """Without [http], the mcp SDK checks Host and Origin itself on a loopback bind."""
-    app = _app(tmp_path, '[endpoints.open]\npackages = ["usda-nass"]\nauth = "none"\n')
+    app = _app(tmp_path, OPEN)
     async with _served(app) as transport:
         foreign = await _post(transport, "/open/mcp", {"Host": "mcp.example.com"})
         origin = await _post(transport, "/open/mcp", {"Origin": "https://evil.example.com"})
@@ -158,9 +162,7 @@ async def test_the_loopback_default_refuses_a_foreign_host(tmp_path: Path) -> No
 
 @pytest.mark.anyio
 async def test_beyond_loopback_without_http_there_is_no_host_check(tmp_path: Path) -> None:
-    app = _app(
-        tmp_path, '[endpoints.open]\npackages = ["usda-nass"]\nauth = "none"\n', host="0.0.0.0"
-    )
+    app = _app(tmp_path, OPEN, host="0.0.0.0")
     async with _served(app) as transport:
         response = await _post(transport, "/open/mcp", {"Host": "anything.example.com"})
     assert response.status_code == 200
@@ -169,8 +171,8 @@ async def test_beyond_loopback_without_http_there_is_no_host_check(tmp_path: Pat
 @pytest.mark.anyio
 async def test_allowed_hosts_and_origins(tmp_path: Path) -> None:
     text = (
-        '[endpoints.open]\npackages = ["usda-nass"]\nauth = "none"\n\n[http]\n'
-        'allowed_hosts = ["mcp.example.com"]\nallowed_origins = ["https://mcp.example.com"]\n'
+        f'{OPEN}\n[http]\nallowed_hosts = ["mcp.example.com"]\n'
+        'allowed_origins = ["https://mcp.example.com"]\n'
     )
     app = _app(tmp_path, text, host="0.0.0.0")
     async with _served(app) as transport:
@@ -196,7 +198,7 @@ async def test_the_bearer_runs_before_the_host_check(
 ) -> None:
     monkeypatch.setenv(VARIABLE, TOKEN)
     text = (
-        f'[endpoints.agriculture]\npackages = ["usda-nass"]\ntoken_env = "{VARIABLE}"\n\n'
+        f'[endpoints.agriculture]\npackages = ["example"]\ntoken_env = "{VARIABLE}"\n\n'
         '[http]\nallowed_hosts = ["mcp.example.com"]\n'
     )
     app = _app(tmp_path, text)
@@ -229,14 +231,17 @@ def test_transport_security() -> None:
     )
 
 
-# The loopback rule (ADR-0026, decision 5; queue row 296).
+# The loopback rule (ADR-0026, decision 5): an endpoint with auth = "none" whose tool set
+# writes or is held to loopback is served on core's LOOPBACK_HOSTS only, unless it sets
+# allow_remote = true (sdk-core ADR-0063, decision 5).
 
-WRITE_NONE = '[endpoints.accounting-write]\npackages = ["cashctrl:write"]\nauth = "none"\n'
+WRITE_NONE = '[endpoints.accounting-write]\npackages = ["example:write"]\nauth = "none"\n'
 
 
-def test_the_loopback_hosts_are_cores() -> None:
-    """The host's copy (queue row 282) stays core's private list, exactly."""
-    assert _LOOPBACK_HOSTS == core_cli._LOOPBACK_HOSTS
+@pytest.fixture
+def held(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The example's read tool set held to loopback, as a source declares it in tasks.py."""
+    monkeypatch.setattr(example_tasks, "MCP_LOOPBACK_ONLY", True, raising=False)
 
 
 def test_an_open_write_endpoint_beyond_loopback_is_refused(tmp_path: Path) -> None:
@@ -244,17 +249,44 @@ def test_an_open_write_endpoint_beyond_loopback_is_refused(tmp_path: Path) -> No
     assert message.startswith(f"{tmp_path / 'host.toml'}: endpoints.accounting-write.auth: ")
     assert '"none" on a write server' in message
     assert "--host 0.0.0.0 is beyond loopback" in message
+    assert f"({', '.join(LOOPBACK_HOSTS)})" in message
     assert "set allow_remote = true" in message
     assert 'auth = "bearer"' in message
 
 
-@pytest.mark.parametrize("host", _LOOPBACK_HOSTS)
+@pytest.mark.usefixtures("held")
+def test_an_open_held_read_endpoint_beyond_loopback_is_refused(tmp_path: Path) -> None:
+    message = _refused(tmp_path, OPEN, host="0.0.0.0")
+    assert message.startswith(f"{tmp_path / 'host.toml'}: endpoints.open.auth: ")
+    assert '"none" on a read server held to loopback' in message
+    assert "set allow_remote = true" in message
+
+
+@pytest.mark.usefixtures("held")
+def test_a_group_with_a_held_package_is_held(tmp_path: Path) -> None:
+    text = '[endpoints.open]\npackages = ["example-api", "example"]\nauth = "none"\n'
+    assert '"none" on a read server held to loopback' in _refused(tmp_path, text, host="0.0.0.0")
+
+
+@pytest.mark.parametrize("host", LOOPBACK_HOSTS)
 def test_an_open_write_endpoint_on_loopback(tmp_path: Path, host: str) -> None:
     assert isinstance(_app(tmp_path, WRITE_NONE, host=host), Starlette)
 
 
+@pytest.mark.usefixtures("held")
+@pytest.mark.parametrize("host", LOOPBACK_HOSTS)
+def test_an_open_held_read_endpoint_on_loopback(tmp_path: Path, host: str) -> None:
+    assert isinstance(_app(tmp_path, OPEN, host=host), Starlette)
+
+
 def test_an_open_write_endpoint_with_allow_remote(tmp_path: Path) -> None:
     app = _app(tmp_path, f"{WRITE_NONE}allow_remote = true\n", host="0.0.0.0")
+    assert isinstance(app, Starlette)
+
+
+@pytest.mark.usefixtures("held")
+def test_an_open_held_read_endpoint_with_allow_remote(tmp_path: Path) -> None:
+    app = _app(tmp_path, f"{OPEN}allow_remote = true\n", host="0.0.0.0")
     assert isinstance(app, Starlette)
 
 
@@ -263,15 +295,14 @@ def test_a_bearer_write_endpoint_beyond_loopback(
 ) -> None:
     monkeypatch.setenv("XIPPIOS_MCP_ACCOUNTING_WRITE_TOKEN", TOKEN)
     text = (
-        '[endpoints.accounting-write]\npackages = ["cashctrl:write"]\n'
+        '[endpoints.accounting-write]\npackages = ["example:write"]\n'
         'token_env = "XIPPIOS_MCP_ACCOUNTING_WRITE_TOKEN"\n'
     )
     assert isinstance(_app(tmp_path, text, host="0.0.0.0"), Starlette)
 
 
 def test_an_open_read_endpoint_beyond_loopback(tmp_path: Path) -> None:
-    text = '[endpoints.open]\npackages = ["usda-nass"]\nauth = "none"\n'
-    assert isinstance(_app(tmp_path, text, host="0.0.0.0"), Starlette)
+    assert isinstance(_app(tmp_path, OPEN, host="0.0.0.0"), Starlette)
 
 
 def test_the_loopback_check_runs_before_a_token_is_read(
@@ -279,7 +310,7 @@ def test_the_loopback_check_runs_before_a_token_is_read(
 ) -> None:
     """A bearer endpoint whose variable is unset does not hide the loopback refusal."""
     monkeypatch.delenv(VARIABLE, raising=False)
-    text = f'[endpoints.agriculture]\npackages = ["usda-nass"]\ntoken_env = "{VARIABLE}"\n\n'
+    text = f'[endpoints.agriculture]\npackages = ["example"]\ntoken_env = "{VARIABLE}"\n\n'
     message = _refused(tmp_path, f"{text}{WRITE_NONE}", host="0.0.0.0")
     assert message.startswith(f"{tmp_path / 'host.toml'}: endpoints.accounting-write.auth: ")
     assert VARIABLE not in message
@@ -290,45 +321,31 @@ def test_the_loopback_match_is_exact(tmp_path: Path) -> None:
     assert "127.0.0.2" in _refused(tmp_path, WRITE_NONE, host="127.0.0.2")
 
 
-# One package's own server on one HTTP endpoint (gap, row 310 (d)).
+# Every endpoint builds its own server, so one package alone on two endpoints is served on
+# both: no server object is mounted twice (the mounted-once check of 0.1.0 has left).
 
 TWICE = """
 [endpoints.first]
-packages = ["usda-nass"]
+packages = ["example"]
 auth = "none"
 
 [endpoints.second]
-packages = ["usda-nass"]
+packages = ["example"]
 auth = "none"
 """
 
 
-def test_a_packages_own_server_on_two_endpoints_is_refused(tmp_path: Path) -> None:
-    message = _refused(tmp_path, TWICE)
-    assert message.startswith(f"{tmp_path / 'host.toml'}: endpoints.second.packages: ")
-    assert "which endpoints.first mounts too" in message
-    assert xippios.usda.nass.mcp.server.name in message
-    assert "an include or exclude list" in message
-
-
 @pytest.mark.anyio
-async def test_a_list_on_one_of_the_two_makes_it_build(tmp_path: Path) -> None:
-    app = _app(tmp_path, f'{TWICE}exclude = {{ usda-nass = ["get_counts"] }}\n')
+async def test_one_package_alone_on_two_endpoints(tmp_path: Path) -> None:
+    config = load_config(_write(tmp_path, TWICE))
+    built = build_all(config)
+    assert built["first"].server is not built["second"].server
+    app = build_app(config, built, host="127.0.0.1")
     async with _served(app) as transport:
         for path in ("/first/mcp", "/second/mcp"):
             async with _session(transport, path) as mcp:
                 listed = await mcp.list_tools()
-            names = {tool.name for tool in listed.tools}
-            assert ("usda_nass_get_counts" in names) is (path == "/first/mcp")
-
-
-def test_the_static_checks_run_before_a_token_is_read(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A refusal that needs no token comes first, so an operator fixes the file first."""
-    monkeypatch.delenv("XIPPIOS_MCP_FIRST_TOKEN", raising=False)
-    text = TWICE.replace('auth = "none"', 'token_env = "XIPPIOS_MCP_FIRST_TOKEN"', 1)
-    assert "which endpoints.first mounts too" in _refused(tmp_path, text)
+            assert sorted(tool.name for tool in listed.tools) == sorted(built["first"].tools)
 
 
 def test_a_missing_token_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

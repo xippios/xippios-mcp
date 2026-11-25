@@ -1,13 +1,14 @@
 # A sample config for xippios-mcp: check it with `xippios-mcp --config host.example.toml`.
 #
 # Each [endpoints.<name>] table is one endpoint, served at /<name>/mcp over HTTP. One
-# package without a list serves the package's own server; several packages, or any
-# include or exclude list, make one server the host builds. Read and write servers never
-# share an endpoint. Lists name exact task names (a task function's __name__). auth is
-# "bearer" by default, and token_env names the environment variable that holds the
-# token, a name ending in _TOKEN (XIPPIOS_MCP_<ENDPOINT>_TOKEN): the token itself stays in
-# the environment, never in this file. An endpoint with auth = "none" that serves a write
-# server is served over HTTP on a loopback --host only, unless it sets allow_remote = true.
+# package without a list serves its tool set as the package's own server does; several
+# packages, or any include or exclude list, make one server the host builds. Read and
+# write servers never share an endpoint. Lists name exact task names (a task function's
+# __name__). auth is "bearer" by default, and token_env names the environment variable
+# that holds the token, a name ending in _TOKEN (XIPPIOS_MCP_<ENDPOINT>_TOKEN): the token
+# itself stays in the environment, never in this file. An endpoint with auth = "none" that
+# serves a write server, or a read server its package holds to loopback, is served over
+# HTTP on a loopback --host only, unless it sets allow_remote = true.
 
 [endpoints.agriculture]                        # served at /agriculture/mcp
 packages = ["usda-nass", "usda-psd", "comtrade"]

@@ -2,13 +2,17 @@
 
 Core's family check (``xippios.core.testing.family``) reads a source's ``_client`` and
 ``tasks``, which the host does not have (ADR-0026, decision 1), so the checks that apply
-to the host are written here.
+to the host are written here, the one on its imports of core among them.
 """
 
+import ast
 import re
 import tomllib
+from collections.abc import Iterator
+from functools import cache
 from importlib.metadata import distribution, entry_points, version
 from importlib.resources import files
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -84,10 +88,14 @@ def test_other_runtime_dependencies_take_lower_bounds(project: dict[str, Any]) -
 
 
 def test_each_extra_is_one_source_package_with_a_lower_bound(project: dict[str, Any]) -> None:
-    """ADR-0026, decision 9: one extra per package, a ``>=`` floor and no upper bound."""
+    """ADR-0026, decision 9: one extra per package, a ``>=`` floor and no upper bound.
+
+    The host names no extra until a source releases on its core minor; ``all`` stays, the
+    extra the image installs.
+    """
     extras: dict[str, list[str]] = project["project"]["optional-dependencies"]
+    assert "all" in extras
     sources = {name: specs for name, specs in extras.items() if name != "all"}
-    assert sources
     for name, specs in sources.items():
         assert len(specs) == 1, name
         requirement = Requirement(specs[0])
@@ -136,3 +144,238 @@ def test_cli_with_a_missing_config(capsys: pytest.CaptureFixture[str], tmp_path:
         main(["--config", str(path)])
     assert exited.value.code == 2
     assert f"{path}: no such file" in capsys.readouterr().err
+
+
+# The host imports nothing private of core and no module of core outside its pinned lists,
+# the __all__ of core's six __init__.py files (sdk-core ADR-0063, decision 4; ADR-0059).
+
+CORE = "xippios.core"
+LISTS = (
+    "xippios.core",
+    "xippios.core.client",
+    "xippios.core.mcp",
+    "xippios.core.http",
+    "xippios.core.testing",
+    "xippios.core.refresh",
+)
+OWN_CODE = ("src", "tests", "scripts")
+
+
+@cache
+def _pinned() -> dict[str, frozenset[str]]:
+    """Each pinned list of the installed core, read by ``ast`` and never imported.
+
+    ``xippios.core.http`` needs core's ``http`` extra, which the host does not install, so
+    no list is imported.
+    """
+    spec = find_spec(CORE)
+    assert spec is not None
+    assert spec.origin is not None
+    root = Path(spec.origin).parent
+    pinned: dict[str, frozenset[str]] = {}
+    for module in LISTS:
+        init = root.joinpath(*module.split(".")[2:], "__init__.py")
+        tree = ast.parse(init.read_text(encoding="utf-8"))
+        [names] = [
+            ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
+            )
+        ]
+        pinned[module] = frozenset(names)
+    return pinned
+
+
+def _dotted(node: ast.expr) -> str | None:
+    """``a.b.c`` for an attribute chain on a name, else ``None``."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _dotted(node.value)
+        return None if base is None else f"{base}.{node.attr}"
+    return None
+
+
+def _outside(dotted: str) -> bool:
+    """Whether the dotted path of core, a module or a module's name, leaves the lists.
+
+    Within the lists: a pinned module, or a name of a pinned module's ``__all__``.
+    """
+    pinned = _pinned()
+    if dotted in pinned:
+        return False
+    module, _, name = dotted.rpartition(".")
+    return module not in pinned or name not in pinned[module]
+
+
+def _in_core(dotted: str) -> bool:
+    return dotted == CORE or dotted.startswith(f"{CORE}.")
+
+
+def _violations(source: str) -> list[str]:
+    """Each import of core in ``source`` outside the pinned lists, ``<line>: <dotted>``.
+
+    An attribute chain is found once, though each of its inner attributes names it again.
+    """
+    return list(dict.fromkeys(_found(source)))
+
+
+def _bound(tree: ast.Module) -> dict[str, str]:
+    """Each name that an import of ``tree`` binds to a path of core, by the path.
+
+    ``import xippios.core.mcp as m`` binds ``m``, ``from xippios.core import mcp`` binds
+    ``mcp`` and ``from xippios import core`` binds ``core``, each to the dotted path it
+    names; ``import xippios.core.mcp`` binds ``xippios``, which a chain spells whole.
+    """
+    bound: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and _in_core(alias.name):
+                    bound[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                dotted = f"{node.module}.{alias.name}"
+                if _in_core(dotted):
+                    bound[alias.asname or alias.name] = dotted
+    return bound
+
+
+def _resolved(dotted: str, bound: dict[str, str]) -> str:
+    """``dotted`` with its first name replaced by the path of core that an import bound."""
+    head, _, rest = dotted.partition(".")
+    if head not in bound:
+        return dotted
+    return f"{bound[head]}.{rest}" if rest else bound[head]
+
+
+def _found(source: str) -> Iterator[str]:
+    tree = ast.parse(source)
+    bound = _bound(tree)
+    for node in ast.walk(tree):
+        found: list[str] = []
+        if isinstance(node, ast.Import):
+            found = [alias.name for alias in node.names if _in_core(alias.name)]
+        elif isinstance(node, ast.ImportFrom) and node.module and _in_core(node.module):
+            found = [f"{node.module}.{alias.name}" for alias in node.names]
+        elif isinstance(node, ast.Attribute):
+            chain = _dotted(node)
+            dotted = None if chain is None else _resolved(chain, bound)
+            if dotted is not None and dotted.startswith(f"{CORE}."):
+                # The longest pinned module the chain starts with, and the part after it.
+                parts = dotted.split(".")
+                depth = max(n for n in range(2, len(parts) + 1) if ".".join(parts[:n]) in LISTS)
+                found = [".".join(parts[: depth + 1])]
+        yield from (
+            f"{getattr(node, 'lineno', 0)}: {dotted}" for dotted in found if _outside(dotted)
+        )
+
+
+def _own_files() -> list[Path]:
+    return sorted(path for folder in OWN_CODE for path in (ROOT / folder).rglob("*.py"))
+
+
+def test_the_lists_are_read_from_core() -> None:
+    pinned = _pinned()
+    assert set(pinned) == set(LISTS)
+    assert {"ToolSet", "build_server", "register_tasks", "LOOPBACK_HOSTS"} <= pinned[
+        "xippios.core.mcp"
+    ]
+    assert "ConfigError" in pinned[CORE]
+
+
+@pytest.mark.parametrize(
+    ("source", "found"),
+    [
+        pytest.param("from xippios.core.mcp import ToolSet, build_server\n", [], id="pinned"),
+        pytest.param("from xippios.core import ConfigError, tool_name\n", [], id="root"),
+        pytest.param("import xippios.core.mcp\nxippios.core.mcp.ToolSet\n", [], id="attribute"),
+        pytest.param("from xippios.core import mcp\n", [], id="a pinned module by name"),
+        pytest.param(
+            "from xippios.core.mcp.server import register_tasks\n",
+            ["1: xippios.core.mcp.server.register_tasks"],
+            id="an unpinned module",
+        ),
+        pytest.param(
+            "from xippios.core._tasks import is_bulk_task\n",
+            ["1: xippios.core._tasks.is_bulk_task"],
+            id="a private module",
+        ),
+        pytest.param(
+            "from xippios.core.mcp import cli\n",
+            ["1: xippios.core.mcp.cli"],
+            id="a module by a pinned path",
+        ),
+        pytest.param(
+            "\nfrom xippios.core.mcp.cli import LOOPBACK_HOSTS\n",
+            ["2: xippios.core.mcp.cli.LOOPBACK_HOSTS"],
+            id="a pinned name by its module",
+        ),
+        pytest.param(
+            "import xippios.core.mcp.server\n",
+            ["1: xippios.core.mcp.server"],
+            id="import of an unpinned module",
+        ),
+        pytest.param(
+            "import xippios.core.mcp\nxippios.core.mcp.server.register_tasks\n",
+            ["2: xippios.core.mcp.server"],
+            id="an attribute chain",
+        ),
+        pytest.param(
+            "from xippios.core.mcp import _held\n",
+            ["1: xippios.core.mcp._held"],
+            id="a private name",
+        ),
+        pytest.param(
+            "from xippios.core import mcp\nmcp.server.register_tasks\n",
+            ["2: xippios.core.mcp.server"],
+            id="a chain on a pinned module imported by name",
+        ),
+        pytest.param(
+            "import xippios.core.mcp as m\nm.cli.LOOPBACK_HOSTS\n",
+            ["2: xippios.core.mcp.cli"],
+            id="a chain on a module's alias",
+        ),
+        pytest.param(
+            "from xippios import core\ncore._tasks.is_bulk_task\n",
+            ["2: xippios.core._tasks"],
+            id="a chain on core imported from the namespace",
+        ),
+        pytest.param(
+            "import xippios.core as c\nc.mcp.server\n",
+            ["2: xippios.core.mcp.server"],
+            id="a chain on core's alias",
+        ),
+        pytest.param(
+            "from xippios.core import mcp\nmcp.ToolSet\n",
+            [],
+            id="a pinned name on a pinned module imported by name",
+        ),
+        pytest.param(
+            "import xippios.core.mcp as m\nm.ToolSet.from_tasks\n",
+            [],
+            id="a pinned name on a module's alias",
+        ),
+        pytest.param(
+            "from xippios.core.mcp import ToolSet\nToolSet.from_tasks\n",
+            [],
+            id="an attribute of a pinned name",
+        ),
+    ],
+)
+def test_an_import_outside_the_lists_is_found(source: str, found: list[str]) -> None:
+    assert _violations(source) == found
+
+
+def test_the_host_imports_core_by_its_pinned_lists_alone() -> None:
+    """Every file of the package, its tests and its scripts (sdk-core ADR-0063, decision 4)."""
+    files = _own_files()
+    assert ROOT / "src" / "xippios" / "mcp" / "servers.py" in files
+    outside = {
+        str(path.relative_to(ROOT)): found
+        for path in files
+        if (found := _violations(path.read_text(encoding="utf-8")))
+    }
+    assert outside == {}

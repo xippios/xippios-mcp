@@ -191,6 +191,24 @@ REFUSALS = [
         ":write: names no package",
     ),
     (
+        "a slug with a dot, which would name a module path",
+        _endpoint('packages = ["core._tasks"]\nauth = "none"'),
+        "endpoints.agriculture.packages",
+        "core._tasks: a slug is lower-case letters and digits, its words joined by hyphens",
+    ),
+    (
+        "a slug in capitals",
+        _endpoint('packages = ["Usda-Nass:write"]\nauth = "none"'),
+        "endpoints.agriculture.packages",
+        "Usda-Nass:write: a slug is lower-case letters and digits",
+    ),
+    (
+        "a slug with a doubled hyphen",
+        _endpoint('packages = ["usda--nass"]\nauth = "none"'),
+        "endpoints.agriculture.packages",
+        "usda--nass: a slug is lower-case letters and digits",
+    ),
+    (
         "a group that mixes write and read",
         _endpoint('packages = ["cashctrl:write", "usda-nass"]\nauth = "none"'),
         "endpoints.agriculture.packages",
@@ -417,6 +435,18 @@ def test_allowed_hosts_without_origins(tmp_path: Path) -> None:
     text = f'{_endpoint(NASS)}[http]\nallowed_hosts = ["mcp.example.com"]\n'
     config = load_config(_write(tmp_path, text))
     assert config.http == HttpConfig(allowed_hosts=("mcp.example.com",))
+
+
+def test_the_sample_loads() -> None:
+    """The README's sample, whose packages are real sources: its build needs them installed."""
+    config = load_config(SAMPLE)
+    assert list(config.endpoints) == ["agriculture", "accounting-write"]
+    agriculture, write = config.endpoints["agriculture"], config.endpoints["accounting-write"]
+    assert [ref.slug for ref in agriculture.packages] == ["usda-nass", "usda-psd", "comtrade"]
+    assert dict(agriculture.exclude) == {"usda-nass": frozenset({"get_counts"})}
+    assert (agriculture.auth, agriculture.allow_remote) == ("bearer", False)
+    assert write.packages == (PackageRef("cashctrl", write=True),)
+    assert write.auth == "none"
 
 
 def test_the_samples_http_example_loads(tmp_path: Path) -> None:

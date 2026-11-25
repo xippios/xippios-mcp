@@ -21,35 +21,17 @@ classifiers = [
 # packages alone (sdk-core ADR-0026 decision 9; sdk-core ADR-0021, amendment 2026-10-29,
 # point 4). The host's own imports take lower bounds at core's lock (conventions §11).
 dependencies = [
-  "xippios-core[mcp]~=0.3.0",
+  "xippios-core[mcp]~=0.5.0",
   "mcp>=2.3.0",
   "starlette>=1.9.0",
   "uvicorn>=0.54.0",
 ]
 
 [project.optional-dependencies]
-# One extra per source package with a >= floor at its PyPI version: the host serves every
-# package at its latest (sdk-core ADR-0026 decision 9). `all` is the union of the others.
-cashctrl = ["xippios-cashctrl>=0.3.0"]
-comtrade = ["xippios-comtrade>=0.2.0"]
-eurostat = ["xippios-eurostat>=0.2.0"]
-faostat = ["xippios-faostat>=0.1.0"]
-usda-esmis = ["xippios-usda-esmis>=0.2.0"]
-usda-esr = ["xippios-usda-esr>=0.2.0"]
-usda-gats = ["xippios-usda-gats>=0.2.0"]
-usda-nass = ["xippios-usda-nass>=0.2.0"]
-usda-psd = ["xippios-usda-psd>=0.3.0"]
-all = [
-  "xippios-cashctrl>=0.3.0",
-  "xippios-comtrade>=0.2.0",
-  "xippios-eurostat>=0.2.0",
-  "xippios-faostat>=0.1.0",
-  "xippios-usda-esmis>=0.2.0",
-  "xippios-usda-esr>=0.2.0",
-  "xippios-usda-gats>=0.2.0",
-  "xippios-usda-nass>=0.2.0",
-  "xippios-usda-psd>=0.3.0",
-]
+# One extra per source package with a >= floor at its first release on core 0.5, and `all`
+# their union (sdk-core ADR-0026 decision 9). No source has released on core 0.5 yet, so the
+# host names none and `all` stays, empty, for the image's install.
+all = []
 
 [project.scripts]
 xippios-mcp = "xippios.mcp.cli:main"
@@ -70,7 +52,7 @@ dev = [
   "respx>=0.22",
   "anyio>=4",
   "detect-secrets>=1.5",
-  "xippios-core[testing]~=0.3.0",
+  "xippios-core[testing]~=0.5.0",
   "httpx2>=2.16.0",
 ]
 
@@ -120,7 +102,8 @@ strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 files = ["src", "tests", "scripts"]
-mypy_path = "src"
+# tests/example holds the invented sources the tests serve, xippios.example among them.
+mypy_path = "src,tests/example"
 namespace_packages = true
 explicit_package_bases = true
 warn_unreachable = true
@@ -128,5 +111,8 @@ warn_unreachable = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --import-mode=importlib"
 testpaths = ["tests"]
+# The invented sources the tests serve, xippios.example and xippios.example.api: the host's
+# tests stand on them and wait for no real source.
+pythonpath = ["tests/example"]
 # record_property, in a live test say, warns under xunit2 when a run writes --junitxml.
 junit_family = "xunit1"
