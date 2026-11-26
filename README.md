@@ -16,23 +16,40 @@ built from this repository, serves them from a container (see Docker).
 ## Install
 
 ```bash
-uv add xippios-mcp xippios-usda-nass     # the host and each package it serves
+uv add 'xippios-mcp[faostat]'     # the host and a package it serves, by its extra
+uv add 'xippios-mcp[all]'         # the host and every package of the table below
 ```
 
 ## Packages
 
 The host runs on `xippios-core` 0.5 and serves every source package of the family that
 is installed beside it and released on that core minor: a package is named by its slug,
-`usda-nass`, and imported as `xippios.usda.nass`. No source has released on core 0.5 yet,
-so the host names no package as an extra, and `all` installs none; each source joins as
-an extra with a lower bound once it has. Before those releases the host served
-sdk-faostat, sdk-cashctrl and sdk-usda-esr from their commits on core 0.5.0's candidate,
-as [the report of 2026-11-25](https://github.com/xippios/xippios-mcp/blob/main/docs/reports/2026-11-25-the-host-serves-the-three-proving-sources.md)
-records, and `tests/test_sources.py` serves each of them that is installed beside it.
+`usda-nass`, and imported as `xippios.usda.nass`. Its extras are the three sources that
+proved core 0.5.0 with the host, where 0.1.0 named nine on core 0.3, and the next release
+lists all twelve sources of the family. Each extra takes a lower bound alone, at the
+source's first release on core 0.5, so the host installs each at its latest release on
+that minor, and `all` installs the three.
+
+| Extra | Distribution | Lower bound | Servers | Tools |
+| --- | --- | --- | --- | --- |
+| `cashctrl` | `xippios-cashctrl` | `>=0.6.0` | read and write | 25 read, 14 write |
+| `faostat` | `xippios-faostat` | `>=0.3.0` | read | 7 |
+| `usda-esr` | `xippios-usda-esr` | `>=0.4.0` | read | 7 |
 
 The tools of a package are those of its tool set, what its `mcp.build()` returns
 (`mcp_write.build()` for a write server): its tasks less its `BULK_TASKS`, which are
-Python-only, each with its own result cap.
+Python-only, each with its own result cap, counted at the version of the lower bound; a
+later release may add tools. Another source released on core 0.5 is served once it is
+installed beside the host, with no extra of its own. `xippios-usda-esr` brings
+`xippios-usda-fas`, the code that the sources of USDA's Foreign Agricultural Service share,
+as its dependency: it runs no server, so the host serves nothing of it, and an endpoint
+that names `usda-fas` is refused.
+
+Before their releases the host served the three from their commits on core 0.5.0's
+candidate, as
+[the report of 2026-11-25](https://github.com/xippios/xippios-mcp/blob/main/docs/reports/2026-11-25-the-host-serves-the-three-proving-sources.md)
+records, and `tests/test_sources.py` serves each of them from the releases that `uv.lock`
+pins.
 
 ### The ceilings of usda-nass and usda-gats
 
@@ -230,9 +247,9 @@ check.
 
 ## Docker
 
-The repository builds an image of the host with every package of `all`, at the versions
-`uv.lock` pins, none until the sources release on `xippios-core` 0.5. 0.1.0 publishes no image to a registry:
-build it from a checkout.
+The repository builds an image of the host with every package of `all`, sdk-faostat,
+sdk-cashctrl and sdk-usda-esr, at the versions `uv.lock` pins. 0.1.0 publishes no image to a
+registry: build it from a checkout.
 
 ```bash
 docker build -t xippios-mcp .
@@ -246,7 +263,7 @@ stays out of the command line. For a config with one bearer endpoint:
 
 ```toml
 [endpoints.agriculture]
-packages = ["usda-nass", "usda-psd", "comtrade"]
+packages = ["faostat", "usda-esr"]
 auth = "bearer"
 token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"
 ```
@@ -285,10 +302,14 @@ fixture file over 256 KiB that a pull request adds or changes. It runs on every 
 and, called by `publish.yml`, once for a release, and its job `ci` is the check the
 organization's ruleset requires. It is handed no secret, and no variable switches it off.
 
-`docker.yml` is the host's own workflow beside those the template renders: it builds the
-image of Docker above from the checkout and runs its `--help`, the check `docker`, on every
-pull request. It pushes no image and logs in to no registry (sdk-core ADR-0026, decision 2).
-It is handed no secret, and no variable switches it off.
+`docker.yml` is the host's own workflow beside those the template renders: on every pull
+request it builds the image of Docker above from the checkout, runs its `--help`, then
+serves it as an operator does, with a mounted config of two bearer endpoints over the three
+sources of `all`, and expects `401` and the bearer's challenge from each for a request
+without a token, the check `docker`. The job stops after 15 minutes, and a newer push to the
+pull request cancels the run still going. It pushes no image and logs in to no registry
+(sdk-core ADR-0026, decision 2). It is handed no secret, since the run makes its own random
+tokens and masks them in the log, and no variable switches it off.
 
 `publish.yml` is the release train (conventions §12): on a push to `main` whose
 `pyproject.toml` names a version that has no tag yet and has its section in `CHANGELOG.md`,
