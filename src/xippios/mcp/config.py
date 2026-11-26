@@ -348,7 +348,7 @@ def _auth(
     if auth == "none":
         raise refusal(path, key, 'is given with auth = "none"; drop it or set auth = "bearer"')
     # The value is never repeated in a message: a token pasted here by mistake stays out
-    # of the log (ADR-0005; conventions §7).
+    # of the log (sdk-core ADR-0030; conventions §7).
     if not isinstance(token_env, str) or not _TOKEN_VARIABLE.fullmatch(token_env):
         raise refusal(
             path,

@@ -135,7 +135,7 @@ def serve_http(app: Starlette, host: str, port: int) -> None:
     uvicorn's access log names the client address, the method, the path with its query
     string and the status of each request, never a header, so never a bearer token; the
     httpx and httpcore loggers are quieted again after uvicorn configured logging
-    (ADR-0005).
+    (sdk-core ADR-0030).
 
     Args:
         app: The app from ``build_app``.

@@ -14,7 +14,7 @@ Then it serves them, or checks and lists them (gap, row 310 (e)):
   config before serving it (gap, row 309 (b)).
 
 A refusal ends the process like an argparse error: the message on stderr, exit status
-2, nothing served (ADR-0014, decision 8).
+2, nothing served (sdk-core ADR-0036, decision 8).
 """
 
 import argparse
