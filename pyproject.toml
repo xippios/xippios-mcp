@@ -29,9 +29,17 @@ dependencies = [
 
 [project.optional-dependencies]
 # One extra per source package with a >= floor at its first release on core 0.5, and `all`
-# their union (sdk-core ADR-0026 decision 9). No source has released on core 0.5 yet, so the
-# host names none and `all` stays, empty, for the image's install.
-all = []
+# their union (sdk-core ADR-0026 decision 9). 0.2.0 lists the three sources that proved core
+# 0.5.0 with the host; the next release lists all twelve. xippios-usda-fas comes with
+# xippios-usda-esr, as its dependency, and is no package the host serves.
+faostat = ["xippios-faostat>=0.3.0"]
+cashctrl = ["xippios-cashctrl>=0.6.0"]
+usda-esr = ["xippios-usda-esr>=0.4.0"]
+all = [
+  "xippios-faostat>=0.3.0",
+  "xippios-cashctrl>=0.6.0",
+  "xippios-usda-esr>=0.4.0",
+]
 
 [project.scripts]
 xippios-mcp = "xippios.mcp.cli:main"

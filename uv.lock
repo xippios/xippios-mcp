@@ -1377,6 +1377,18 @@ wheels = [
 ]
 
 [[package]]
+name = "xippios-cashctrl"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "xippios-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cb/6e/756313c1e42c5b7449a38299afed7eb642a3a8c271c180ce1836ea63ec33/xippios_cashctrl-0.6.0.tar.gz", hash = "sha256:3ec884ed7b0e75ed52ebd6d94b81ccf4bf5cca768f1108e18aa428b5c85f8d9d", size = 249948, upload-time = "2026-11-26T08:23:28.244Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/69/3db94901185106475748f879ed59071b9ff1f4ecfeabd897a7d9633038cb/xippios_cashctrl-0.6.0-py3-none-any.whl", hash = "sha256:e3dcc45fdc1035c0460459d050e8c09a3e26a2cc72057e26f8eb192cb6b151a1", size = 177106, upload-time = "2026-11-26T08:23:26.853Z" },
+]
+
+[[package]]
 name = "xippios-core"
 version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1402,6 +1414,18 @@ testing = [
 ]
 
 [[package]]
+name = "xippios-faostat"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "xippios-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/40/d5/dd87c166f16417ca8de78c41665e13184e7e775d91c3f9eed5d035f84fe2/xippios_faostat-0.3.0.tar.gz", hash = "sha256:dadd0da252957bf08bb9abe2aa4f1796f492e4ee5ceed1c7d5bbe36008c0f443", size = 126901, upload-time = "2026-11-26T04:12:50.997Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/a8/f1135225e786f5d5d0cd69583bf140cecfd95d8bc67effa7acb00a1a68e5/xippios_faostat-0.3.0-py3-none-any.whl", hash = "sha256:122cc08bc9008078373164faabc6b0bad3d4e1cc454ae800334b47bc04d3642c", size = 95159, upload-time = "2026-11-26T04:12:49.637Z" },
+]
+
+[[package]]
 name = "xippios-mcp"
 version = "0.1.0"
 source = { editable = "." }
@@ -1410,6 +1434,22 @@ dependencies = [
     { name = "starlette" },
     { name = "uvicorn" },
     { name = "xippios-core", extra = ["mcp"] },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "xippios-cashctrl" },
+    { name = "xippios-faostat" },
+    { name = "xippios-usda-esr" },
+]
+cashctrl = [
+    { name = "xippios-cashctrl" },
+]
+faostat = [
+    { name = "xippios-faostat" },
+]
+usda-esr = [
+    { name = "xippios-usda-esr" },
 ]
 
 [package.dev-dependencies]
@@ -1430,9 +1470,15 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.3.0" },
     { name = "starlette", specifier = ">=1.9.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
+    { name = "xippios-cashctrl", marker = "extra == 'all'", specifier = ">=0.6.0" },
+    { name = "xippios-cashctrl", marker = "extra == 'cashctrl'", specifier = ">=0.6.0" },
     { name = "xippios-core", extras = ["mcp"], specifier = "~=0.5.0" },
+    { name = "xippios-faostat", marker = "extra == 'all'", specifier = ">=0.3.0" },
+    { name = "xippios-faostat", marker = "extra == 'faostat'", specifier = ">=0.3.0" },
+    { name = "xippios-usda-esr", marker = "extra == 'all'", specifier = ">=0.4.0" },
+    { name = "xippios-usda-esr", marker = "extra == 'usda-esr'", specifier = ">=0.4.0" },
 ]
-provides-extras = ["all"]
+provides-extras = ["faostat", "cashctrl", "usda-esr", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1445,4 +1491,29 @@ dev = [
     { name = "respx", specifier = ">=0.22" },
     { name = "ruff", specifier = "==0.17.1" },
     { name = "xippios-core", extras = ["testing"], specifier = "~=0.5.0" },
+]
+
+[[package]]
+name = "xippios-usda-esr"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "xippios-core" },
+    { name = "xippios-usda-fas" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/2d/7e57f6e957cb72c0b1160b8b8a6c47cb4dd9051ae974df99fab95ed7b47b/xippios_usda_esr-0.4.0.tar.gz", hash = "sha256:ec10c3c7c1e558fdbab39cfa64aa4e458334648e38b24e669da34cc090275f50", size = 62695, upload-time = "2026-11-26T18:54:49.477Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/47/a288d3b267741d646cc341b84813120c233aae571a2a26a59e84ef5058fc/xippios_usda_esr-0.4.0-py3-none-any.whl", hash = "sha256:2fd3d457f0e26227a93e0a53f90d5b4c1bb8aefbfb0c49a247e6701bc78a6a80", size = 54285, upload-time = "2026-11-26T18:54:48.379Z" },
+]
+
+[[package]]
+name = "xippios-usda-fas"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "xippios-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/13/bb/e0e76447c2d56d8f27f6ad41400f661ee35c52cfce131f6bd39868b64013/xippios_usda_fas-0.1.0.tar.gz", hash = "sha256:189d6325fb39e138e9d126f4dd3b4102ba8af41a2206ab139726a85979178f07", size = 25581, upload-time = "2026-11-26T08:29:58.619Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/14/e1100a004daa45504b0d8ecb11491812c53425c9239d4a8705f339b6c789/xippios_usda_fas-0.1.0-py3-none-any.whl", hash = "sha256:4d4a53a4b16e560793fd87131eef8990b4d9c2cbeb534eda6cb710a6d32acc90", size = 23279, upload-time = "2026-11-26T08:29:57.232Z" },
 ]
