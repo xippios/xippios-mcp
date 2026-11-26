@@ -35,7 +35,7 @@ import pytest
 import respx
 from mcp import Client
 from mcp.server.mcpserver import MCPServer
-from xippios.core import tool_name
+from xippios.core import ConfigError, tool_name
 from xippios.core.mcp import ToolSet
 from xippios.core.testing import mcp_call_text
 
@@ -279,6 +279,20 @@ async def test_the_list_mode_prints_each_endpoint_with_its_tool_count(
         f"agriculture: read, {count['faostat'] + count['usda-esr']} tools of faostat, usda-esr",
         f"cashctrl-write: write, {count['cashctrl:write']} tools of cashctrl",
     ]
+
+
+@_needs("usda-esr")
+def test_an_endpoint_of_the_shared_package_is_refused(tmp_path: Path) -> None:
+    """``xippios-usda-fas`` comes with sdk-usda-esr and runs no server, so the host serves none."""
+    assert _installed("usda-fas")
+    path = tmp_path / "host.toml"
+    path.write_text('[endpoints.fas]\npackages = ["usda-fas"]\nauth = "none"\n', encoding="utf-8")
+    with pytest.raises(ConfigError) as refused:
+        build_endpoint(load_config(path).endpoints["fas"])
+    assert str(refused.value).endswith(
+        "endpoints.fas.packages: usda-fas: xippios.usda.fas has no xippios.usda.fas.mcp, "
+        "the module of a source's MCP server"
+    )
 
 
 # One call for each source, with nothing counted: an answer from a table the package carries,
