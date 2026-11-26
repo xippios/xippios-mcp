@@ -283,6 +283,7 @@ async def test_the_list_mode_prints_each_endpoint_with_its_tool_count(
     ]
 
 
+@_needs("faostat", "usda-esr", "cashctrl")
 def test_the_sample_config_builds_from_the_extras(capsys: pytest.CaptureFixture[str]) -> None:
     """The README's sample, ``docs/host.example.toml``, names sources of the extras alone.
 
