@@ -9,49 +9,51 @@ then the trusted publisher uploads. The tag comes from that workflow alone.
 The release's pull request changes only the files of conventions §12: `pyproject.toml`,
 `uv.lock`, `CHANGELOG.md`, `README.md`, `CLAUDE.md` and the fragments under
 `changelog/`, which it deletes. §12 also names `docs/handover.md`, which is sdk-core's
-file and not one the host has. What a release needs beyond these files comes in a pull
-request of its own before it, the removal of a git pin among it (step 1). A template
-release is ported by hand in a pull request of its own as well, never in a release's, as
-`## Scaffolded by hand` in `CLAUDE.md` says. The host has no packaged reference data, no
-sibling check and no live tests: the packages' own live runs cover their tasks. The
-release meets sdk-core's definition of done,
+file and not one this package must have. A template release is taken in a pull request of
+its own, never in a release's:
+`uvx --from 'copier>=9.19' copier update --defaults --vcs-ref=<tag>`, its conflicts resolved
+and the Hand-apply entries of sdk-template's `CHANGELOG.md` since the tag
+`.copier-answers.yml` names ported by hand (conventions §15). `pyproject.toml` is this
+package's own, which no update writes: a new core minor raises its bound there by hand in
+that pull request, and a pin of core leaves it by hand in a pull request of its own before
+the release's, since `publish.yml` refuses to tag a pinned release. The pull request of the
+update has a fragment that names the core bound, the template's tag and the conventions'
+version as they stand after the update, changed or not, and is `breaking` where the update
+brings a core minor and `changed` where it brings none (conventions §15 item 9). The release
+meets sdk-core's definition of done,
 https://github.com/xippios/sdk-core/blob/main/docs/definition-of-done.md, and its review
-checklist, https://github.com/xippios/sdk-core/blob/main/docs/review-checklist.md; an
-item written for a source (tasks, wrappers, fixtures, `docs/upstream/`) does not apply
-to the host (sdk-core ADR-0026, decision 1).
+checklist, https://github.com/xippios/sdk-core/blob/main/docs/review-checklist.md.
 
-1. **No git pin.** If `pyproject.toml` has a `[tool.uv.sources]` block, the host depends
-   on an unreleased package and cannot be released as it is. Find the release that
-   carries the pinned change (stop and report if there is none yet), and in a change of
-   its own remove the block and raise the bound to that release: for xippios-core
-   `~=X.Y.Z`, still one minor (conventions §12), for a source package its `>=` floor
-   (sdk-core ADR-0026, decision 9). Then `uv lock`, the checks and a changelog fragment
-   under `changelog/` that names the new bound, in a pull request of its own before the
-   release's. `publish.yml` refuses to tag a pinned release as well.
-2. SemVer check: an added surface bumps the host's minor as SemVer reads it, since the
-   host has no dependents, and pre-1.0 a breaking change bumps it too (sdk-core
-   ADR-0026, amendment 2026-10-30, part (e)); a fix alone is a patch. The host's public
-   surface is its entry point, its options, its config keys and its extras. Read the
-   fragments under `changelog/` and what `## [Unreleased]` holds, where there is one,
-   and confirm that the version matches them; say so in the pull request if it does
-   not.
-3. `pyproject.toml`: set `version`, the version `publish.yml` tags, then `uv lock`.
-4. `CHANGELOG.md`: write `## [<version>] - <today>` in place of `## [Unreleased]`, or
-   above the last release where there is none, and assemble its section from the
-   fragments under `changelog/` and what `## [Unreleased]` held, as `changelog/README.md`
-   lays it out. The repository keeps no script for it: copy each fragment's bullet into
-   the section by hand, then delete the fragments it took; `changelog/README.md` stays.
+1. **SemVer**, by conventions §12: an adoption of a core minor is a breaking
+   change, whatever else the release brings, and its fragment is `breaking`. Read the
+   fragments under `changelog/` and what `## [Unreleased]` holds, which
+   `python3 -I scripts/changelog_assemble.py --notes` prints as the section will hold
+   them, writing nothing, and confirm that the version matches them; say so in the pull
+   request if it does not.
+2. **The version.** `version` in `pyproject.toml` is the version `publish.yml` tags, and
+   `uv.lock` holds it on this package's own entry. Step 3's script sets both and runs no
+   `uv lock`, so the release builds nothing and reaches no index. A first release keeps
+   the scaffold's `0.1.0`: its CHANGELOG section alone makes it a release.
+3. **The section.** Run
+   `python3 -I scripts/release_prepare.py <version> --date <YYYY-MM-DD>`, the date
+   today's in UTC. It writes `## [<version>] - <date>` into `CHANGELOG.md` in place of
+   `## [Unreleased]`, or above the last release where there is none, assembles its section
+   from the fragments under `changelog/` and what `## [Unreleased]` held, as
+   `changelog/README.md` lays it out, deletes the fragments it took, the README kept, and
+   sets the version of step 2. The release rewords and regroups no entry: a wrong one
+   is corrected in its fragment, by a pull request before the release's (conventions §12).
    `publish.yml` tags only a version whose section has this heading, and the section
    becomes the tag's message. The date is the tag's, the day the pull request reaches
-   `main`: if that slips to a later day, re-date the heading in a commit of its own
-   before it.
-5. README: the extras table, its lower bounds and tool counts, and the install snippets
-   are current.
-6. Run the checks,
-   `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest && uv run pre-commit run --all-files`
-   and `python3 scripts/adr_index.py --check`, then build the image and run it as
-   `ci.yml`'s `docker` job does, since the image installs what `uv.lock` pins:
-   `docker build -t xippios-mcp . && docker run --rm xippios-mcp --help`.
-7. **The report.** The release's pull request names the version and the bump's reason.
-   Then stop: once it is on `main`, `publish.yml` tags `v<version>` and waits for a
-   maintainer's approval of the `pypi` run.
+   `main`: if that slips to a later day, the same command with that day's `--date`
+   re-dates the heading alone, in a commit of its own before it.
+4. README: install snippets are current.
+5. Run the checks,
+   `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest && uv run pre-commit run --all-files`.
+6. **The report.** The release's pull request names the version. Then stop: once it is on
+   `main`, `publish.yml` tags `v<version>` and waits for a maintainer's approval of the
+   `pypi` run. A first release needs PyPI's pending publisher before that approval, with
+   project name `xippios-mcp`, the distribution's name in `pyproject.toml`,
+   owner `xippios`, repository `xippios-mcp`, workflow `publish.yml` and
+   environment `pypi`: a publisher that names another project fails the upload for good,
+   the tag stands without a release, and only a patch release recovers. Name the
+   publisher in the report if the release is `0.1.0`.

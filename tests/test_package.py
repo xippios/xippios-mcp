@@ -146,6 +146,30 @@ def test_cli_with_a_missing_config(capsys: pytest.CaptureFixture[str], tmp_path:
     assert f"{path}: no such file" in capsys.readouterr().err
 
 
+# The host is a render of sdk-template's general shape, so a template release reaches it by
+# `copier update` (sdk-template ADR-0003, decision 9).
+
+TEMPLATE = "https://github.com/xippios/sdk-template.git"
+
+
+def _answers() -> dict[str, str]:
+    """The answers of ``.copier-answers.yml``, which copier writes one plain line each."""
+    answers: dict[str, str] = {}
+    for line in (ROOT / ".copier-answers.yml").read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#"):
+            key, _, value = line.partition(": ")
+            answers[key] = value
+    return answers
+
+
+def test_the_host_records_the_templates_general_shape() -> None:
+    answers = _answers()
+    assert answers["_src_path"] == TEMPLATE
+    assert answers["shape"] == "general"
+    assert answers["repository_name"] == DISTRIBUTION
+    assert answers["source_slug"] == answers["import_path"] == "mcp"
+
+
 # The host imports nothing private of core and no module of core outside its pinned lists,
 # the __all__ of core's six __init__.py files (sdk-core ADR-0063, decision 4; ADR-0059).
 
