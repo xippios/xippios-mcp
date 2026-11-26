@@ -90,8 +90,8 @@ def test_other_runtime_dependencies_take_lower_bounds(project: dict[str, Any]) -
 def test_each_extra_is_one_source_package_with_a_lower_bound(project: dict[str, Any]) -> None:
     """ADR-0026, decision 9: one extra per package, a ``>=`` floor and no upper bound.
 
-    The host names no extra until a source releases on its core minor; ``all`` stays, the
-    extra the image installs.
+    A source joins as an extra once it has released on the host's core minor; ``all`` is
+    the extra the image installs.
     """
     extras: dict[str, list[str]] = project["project"]["optional-dependencies"]
     assert "all" in extras
@@ -111,6 +111,77 @@ def test_all_is_the_union_of_the_extras(project: dict[str, Any]) -> None:
     every = [str(Requirement(s)) for s in extras["all"]]
     assert len(every) == len(set(every))
     assert set(every) == union
+
+
+# The extras of 0.2.0: the three sources that proved core 0.5.0 with the host, by the
+# maintainer's decision of 2026-11-24. A later release lists all twelve.
+
+FLOORS = {"faostat": "0.3.0", "cashctrl": "0.6.0", "usda-esr": "0.4.0"}
+"""Each proving source's first release on core 0.5, as PyPI holds it: its extra's floor."""
+SHARED = "xippios-usda-fas"
+"""The shared package that sdk-usda-esr depends on, which the host neither names nor loads."""
+PYPI = {"registry": "https://pypi.org/simple"}
+
+
+def test_the_extras_are_the_proving_sources_at_their_floors(project: dict[str, Any]) -> None:
+    extras: dict[str, list[str]] = project["project"]["optional-dependencies"]
+    sources = {name: specs for name, specs in extras.items() if name != "all"}
+    assert sources == {name: [f"xippios-{name}>={floor}"] for name, floor in FLOORS.items()}
+
+
+def _locked() -> dict[str, list[dict[str, Any]]]:
+    """The entries of ``uv.lock`` by package name, one each unless a marker splits one."""
+    with (ROOT / "uv.lock").open("rb") as file:
+        lock: dict[str, Any] = tomllib.load(file)
+    locked: dict[str, list[dict[str, Any]]] = {}
+    for entry in lock["package"]:
+        locked.setdefault(entry["name"], []).append(entry)
+    return locked
+
+
+def test_the_lock_resolves_the_proving_sources_from_pypi_on_one_core_minor(
+    project: dict[str, Any],
+) -> None:
+    """Every package comes from PyPI at one version, the sources above their floors.
+
+    No ``[tool.uv.sources]`` pins a commit or a path, and the lock holds no ``git``, ``path``
+    or ``url`` source: ``publish.yml`` refuses a core pinned to git, and an image builds from
+    the lock alone.
+    """
+    locked = _locked()
+    for slug, floor in FLOORS.items():
+        entries = locked.get(f"xippios-{slug}", [])
+        assert len(entries) == 1, f"xippios-{slug}: {len(entries)} entries in uv.lock"
+        [source] = entries
+        assert source["source"] == PYPI, slug
+        assert Version(source["version"]) >= Version(floor), slug
+    [core] = locked["xippios-core"]
+    [bound] = [
+        Requirement(spec)
+        for spec in project["project"]["dependencies"]
+        if Requirement(spec).name == "xippios-core"
+    ]
+    assert core["source"] == PYPI
+    assert bound.specifier.contains(core["version"])
+    assert "sources" not in project.get("tool", {}).get("uv", {})
+    [own] = locked.pop(DISTRIBUTION)
+    assert own["source"] == {"editable": "."}
+    elsewhere = {name for name, entries in locked.items() for e in entries if e["source"] != PYPI}
+    assert elsewhere == set()
+
+
+def test_the_shared_package_comes_with_usda_esr_alone() -> None:
+    locked = _locked()
+    [shared] = locked[SHARED]
+    assert shared["source"] == PYPI
+    dependents = {
+        name
+        for name, entries in locked.items()
+        for entry in entries
+        for dependency in entry.get("dependencies", [])
+        if dependency["name"] == SHARED
+    }
+    assert dependents == {"xippios-usda-esr"}
 
 
 def test_entry_point(project: dict[str, Any]) -> None:

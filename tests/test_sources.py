@@ -1,9 +1,11 @@
 """The proving sources, each served where it is installed beside the host.
 
 sdk-faostat, sdk-cashctrl and sdk-usda-esr are the three sources that prove xippios-core 0.5.0
-with the host before its release (https://github.com/xippios/sdk-core/issues/485). Every test
-here runs where the sources it names are installed and skips where one is not, so a run on the
-invented sources of ``tests/example`` alone skips them all. A source loads by its ``build()``,
+with the host before its release (https://github.com/xippios/sdk-core/issues/485), and the
+host's extras. The run installs them, ``uv sync --all-extras`` as CI runs it, and the first
+test fails where one is missing, so CI never skips the rest. Every other test runs where the
+sources it names are installed and skips where one is not, so a run on the invented sources of
+``tests/example`` alone fails that one test and skips the rest. A source loads by its ``build()``,
 and every endpoint the host builds of it lists its tools under the names and with the input
 schemas of the source's own ``server``, both reached through ``mcp.Client`` in-process, as a
 client reaches them. Each call is one that the source answers or refuses before any request:
@@ -23,6 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import import_module
+from importlib.metadata import metadata
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
@@ -186,6 +189,14 @@ def _recorded() -> Iterator[Sent]:
         finally:
             _RECORDING.pop()
             sent.requests = router.calls.call_count
+
+
+def test_the_run_installs_every_source_of_the_extras() -> None:
+    """The host's extras are the proving sources, and the run installs each of them."""
+    extras = metadata("xippios-mcp").get_all("Provides-Extra") or []
+    assert sorted(extra for extra in extras if extra != "all") == sorted(SOURCES)
+    missing = [slug for slug in SOURCES if not _installed(slug)]
+    assert missing == [], "uv sync --all-extras installs xippios-mcp[all]"
 
 
 @pytest.mark.skipif(
