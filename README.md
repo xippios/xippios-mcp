@@ -73,8 +73,8 @@ is one endpoint, which the HTTP transport serves at `/<name>/mcp`:
 
 ```toml
 [endpoints.agriculture]                        # served at /agriculture/mcp
-packages = ["usda-nass", "usda-psd", "comtrade"]
-exclude = { usda-nass = ["get_counts"] }       # or include = { ... }; exact task names
+packages = ["faostat", "usda-esr"]
+exclude = { faostat = ["list_bulk_datasets"] } # or include = { ... }; exact task names
 auth = "bearer"                                # the default; or "none"
 token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"    # a name ending in _TOKEN, never a value
 allow_remote = false                           # the default
@@ -91,10 +91,10 @@ auth = "none"
   which narrows its tools. Each endpoint has a server of its own, so one package may
   serve several endpoints.
 - A group, several packages, is a server the host builds, named `xippios-<endpoint>`:
-  each package's tools under their own names (`usda_nass_get_data`), with the package's
+  each package's tools under their own names (`faostat_get_data`), with the package's
   result caps for the tools it keeps. Its instructions open with one sentence naming its
   packages and their tool counts, then give each package's own instructions under a
-  heading of its slug, `## usda-nass`.
+  heading of its slug, `## faostat`.
 - An `include` or `exclude` list narrows a package's tools and leaves its instructions
   whole, on an endpoint of one package and in a group alike, so they may name a tool that
   the endpoint does not serve, a listing tool they say to call first, say. The host does
@@ -106,10 +106,10 @@ auth = "none"
 - Read and write never mix: an endpoint's packages are all `<slug>:write` or none, and
   the host refuses a group that mixes them.
 - `include` and `exclude` are keyed by package slug and name exact task names, a task
-  function's `__name__` (`get_counts`, not `usda_nass_get_counts`); a package takes one
-  of the two, and an empty list is refused. A name that is no tool of the package is
-  refused, a task in the package's `BULK_TASKS` among them, since a bulk task is
-  Python-only and no tool.
+  function's `__name__` (`list_bulk_datasets`, not `faostat_list_bulk_datasets`); a
+  package takes one of the two, and an empty list is refused. A name that is no tool of
+  the package is refused, a task in the package's `BULK_TASKS` among them, since a bulk
+  task is Python-only and no tool.
 - A package's slug is lower-case letters and digits, its words joined by hyphens; one
   that is not installed is refused with the package to install.
 - `auth` is `"bearer"` by default, or `"none"`. With the bearer, `token_env` names the
@@ -133,7 +133,7 @@ tool count of the packages installed; for
 the sample above:
 
 ```text
-agriculture: read, <n> tools of usda-nass, usda-psd, comtrade
+agriculture: read, <n> tools of faostat, usda-esr
 accounting-write: write, <n> tools of cashctrl
 ```
 
@@ -306,8 +306,10 @@ organization's ruleset requires. It is handed no secret, and no variable switche
 request it builds the image of Docker above from the checkout, runs its `--help`, then
 serves it as an operator does, with a mounted config of two bearer endpoints over the three
 sources of `all`, and expects `401` and the bearer's challenge from each for a request
-without a token, the check `docker`. The job stops after 15 minutes, and a newer push to the
-pull request cancels the run still going. It pushes no image and logs in to no registry
+without a token, the check `docker`. Each request is retried for about 30 seconds while the
+server starts, and a `401` is the answer, never retried: the host serves only once it has
+built every endpoint. The job stops after 15 minutes, and a newer push to the pull request
+cancels the run still going. It pushes no image and logs in to no registry
 (sdk-core ADR-0026, decision 2). It is handed no secret, since the run makes its own random
 tokens and masks them in the log, and no variable switches it off.
 

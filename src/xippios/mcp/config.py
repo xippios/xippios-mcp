@@ -4,8 +4,8 @@ The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
 ``[endpoints]`` is one endpoint, served at ``/<name>/mcp`` over HTTP::
 
     [endpoints.agriculture]
-    packages = ["usda-nass", "usda-psd", "comtrade"]
-    exclude = { usda-nass = ["get_counts"] }
+    packages = ["faostat", "usda-esr"]
+    exclude = { faostat = ["list_bulk_datasets"] }
     auth = "bearer"
     token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"
     allow_remote = false

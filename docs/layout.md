@@ -45,10 +45,11 @@ tests/
                    status 2; no test binds a port
   test_sources.py  the three sources of `all`, served from the releases the lock pins:
                    each by its build(), its endpoints listing the tools of its own
-                   server, the list mode, and one call each that counts no request
+                   server, the list mode, the sample config built, and one call each that
+                   counts no request
 docs/
-  host.example.toml  the sample config, loaded by the tests; its build needs the real
-                   sources it names
+  host.example.toml  the sample config, of sources of the extras alone: loaded by
+                   test_config.py and built by test_sources.py
   reports/2026-11-25-the-host-serves-the-three-proving-sources.md
                    the run of test_sources.py and the list mode on core 0.5.0's
                    candidate, with the commits of the host and the three sources
