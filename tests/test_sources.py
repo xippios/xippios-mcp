@@ -46,6 +46,8 @@ from xippios.mcp.servers import Built, build_endpoint
 
 SOURCES = ("faostat", "cashctrl", "usda-esr")
 """The proving sources' slugs; a later release of the host serves all twelve sources."""
+SAMPLE = Path(__file__).resolve().parents[1] / "docs" / "host.example.toml"
+"""The README's sample config."""
 
 CONFIG = """\
 [endpoints.faostat]
@@ -278,6 +280,23 @@ async def test_the_list_mode_prints_each_endpoint_with_its_tool_count(
         f"usda-esr: read, {count['usda-esr']} tools of usda-esr",
         f"agriculture: read, {count['faostat'] + count['usda-esr']} tools of faostat, usda-esr",
         f"cashctrl-write: write, {count['cashctrl:write']} tools of cashctrl",
+    ]
+
+
+def test_the_sample_config_builds_from_the_extras(capsys: pytest.CaptureFixture[str]) -> None:
+    """The README's sample, ``docs/host.example.toml``, names sources of the extras alone.
+
+    So an operator who installs ``xippios-mcp[all]`` checks it as the README says, and it
+    builds every endpoint where 0.1.0's sample named sources that 0.2.0 cannot install.
+    """
+    endpoints = load_config(SAMPLE).endpoints.values()
+    assert {ref.slug for endpoint in endpoints for ref in endpoint.packages} <= set(SOURCES)
+    main(["--config", str(SAMPLE)])
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert [line.partition(",")[0] for line in captured.out.splitlines()] == [
+        "agriculture: read",
+        "accounting-write: write",
     ]
 
 

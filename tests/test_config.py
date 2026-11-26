@@ -438,12 +438,15 @@ def test_allowed_hosts_without_origins(tmp_path: Path) -> None:
 
 
 def test_the_sample_loads() -> None:
-    """The README's sample, whose packages are real sources: its build needs them installed."""
+    """The README's sample, whose packages are real sources: its build needs them installed.
+
+    ``tests/test_sources.py`` builds it with the host's extras installed.
+    """
     config = load_config(SAMPLE)
     assert list(config.endpoints) == ["agriculture", "accounting-write"]
     agriculture, write = config.endpoints["agriculture"], config.endpoints["accounting-write"]
-    assert [ref.slug for ref in agriculture.packages] == ["usda-nass", "usda-psd", "comtrade"]
-    assert dict(agriculture.exclude) == {"usda-nass": frozenset({"get_counts"})}
+    assert [ref.slug for ref in agriculture.packages] == ["faostat", "usda-esr"]
+    assert dict(agriculture.exclude) == {"faostat": frozenset({"list_bulk_datasets"})}
     assert (agriculture.auth, agriculture.allow_remote) == ("bearer", False)
     assert write.packages == (PackageRef("cashctrl", write=True),)
     assert write.auth == "none"
