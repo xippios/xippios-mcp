@@ -1,8 +1,8 @@
 """The host's own package checks.
 
 Core's family check (``xippios.core.testing.family``) reads a source's ``_client`` and
-``tasks``, which the host does not have (ADR-0026, decision 1), so the checks that apply
-to the host are written here, the one on its imports of core among them.
+``tasks``, which the host does not have (sdk-core ADR-0026, decision 1), so the checks that
+apply to the host are written here, the one on its imports of core among them.
 """
 
 import ast
@@ -88,7 +88,7 @@ def test_other_runtime_dependencies_take_lower_bounds(project: dict[str, Any]) -
 
 
 def test_each_extra_is_one_source_package_with_a_lower_bound(project: dict[str, Any]) -> None:
-    """ADR-0026, decision 9: one extra per package, a ``>=`` floor and no upper bound.
+    """sdk-core ADR-0026, decision 9: one extra per package, a ``>=`` floor and no upper bound.
 
     A source joins as an extra once it has released on the host's core minor; ``all`` is
     the extra the image installs.
@@ -242,7 +242,7 @@ def test_the_host_records_the_templates_general_shape() -> None:
 
 
 # The host imports nothing private of core and no module of core outside its pinned lists,
-# the __all__ of core's six __init__.py files (sdk-core ADR-0063, decision 4; ADR-0059).
+# the __all__ of core's six __init__.py files (sdk-core ADR-0063, decision 4; sdk-core ADR-0059).
 
 CORE = "xippios.core"
 LISTS = (

@@ -4,8 +4,8 @@ A package is named by its slug, the source's slug, and imported at ``xippios.`` 
 slug with each hyphen turned into a dot (conventions §1): ``usda-nass`` is
 ``xippios.usda.nass``, ``cashctrl`` is ``xippios.cashctrl``. A package that is installed is
 served; the host's extras say what ``all`` installs and what the hint for a missing
-package names. What the host reads of a package is the package contract (sdk-core
-ADR-0063, decisions 2 and 4; ADR-0001 of this package): ``<path>.mcp.build()``, or
+package names. What the host reads of a package is the package contract
+(sdk-core ADR-0063, decisions 2 and 4; ADR-0001 of this package): ``<path>.mcp.build()``, or
 ``<path>.mcp_write.build()`` for ``<slug>:write``, which returns the package's
 ``ToolSet``. The tool set holds the package's tools alone, its bulk tasks left out, with
 their caps, its instructions and version, and whether it writes or is held to loopback.

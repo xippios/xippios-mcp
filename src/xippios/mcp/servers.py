@@ -14,7 +14,7 @@ as that entry point applies it when it runs without options (ADR-0001, decision 
 Whether the server writes and whether it is held to loopback come from the tool sets'
 ``read_only`` and ``loopback_only`` (sdk-core ADR-0063, decision 5). The host wraps no tool
 and reads no answer: an error answer reaches the client as the package's tool returned it
-(ADR-0026, decision 6).
+(sdk-core ADR-0026, decision 6).
 """
 
 from dataclasses import dataclass

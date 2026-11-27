@@ -250,9 +250,9 @@ def test_transport_security() -> None:
     )
 
 
-# The loopback rule (ADR-0026, decision 5): an endpoint with auth = "none" whose tool set
-# writes or is held to loopback is served on core's LOOPBACK_HOSTS only, unless it sets
-# allow_remote = true (sdk-core ADR-0063, decision 5).
+# The loopback rule (sdk-core ADR-0026, decision 5): an endpoint with auth = "none" whose
+# tool set writes or is held to loopback is served on core's LOOPBACK_HOSTS only, unless it
+# sets allow_remote = true (sdk-core ADR-0063, decision 5).
 
 WRITE_NONE = '[endpoints.accounting-write]\npackages = ["example:write"]\nauth = "none"\n'
 
