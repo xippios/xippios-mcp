@@ -276,7 +276,7 @@ def _packages(path: Path, here: list[str], value: Any) -> tuple[PackageRef, ...]
             path,
             key,
             "mixes write servers (<slug>:write) and read servers; a group never mixes read "
-            "and write tools (ADR-0026, decision 4), so give each its own endpoint",
+            "and write tools (sdk-core ADR-0026, decision 4), so give each its own endpoint",
         )
     seen: set[str] = set()
     for ref in refs:
