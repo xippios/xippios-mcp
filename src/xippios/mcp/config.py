@@ -1,7 +1,8 @@
-"""The host's config file: its endpoints, their packages, tool lists and auth (ADR-0026).
+"""The host's config file: its endpoints, their packages, tool lists and auth (sdk-core ADR-0026).
 
-The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
-``[endpoints]`` is one endpoint, served at ``/<name>/mcp`` over HTTP::
+The file is TOML, read with the standard library's ``tomllib``, so reading it takes no
+dependency of its own. Each table under ``[endpoints]`` is one endpoint, served at
+``/<name>/mcp`` over HTTP::
 
     [endpoints.agriculture]
     packages = ["faostat", "usda-esr"]
@@ -19,7 +20,7 @@ The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
     allowed_origins = ["https://mcp.example.com"]
 
 The optional ``[http]`` table names the ``Host`` and ``Origin`` header values the HTTP
-transport accepts, for a host behind a reverse proxy (ADR-0026, decision 5).
+transport accepts, for a host behind a reverse proxy (sdk-core ADR-0026, decision 5).
 ``load_config`` checks the file's shape and nothing that needs a package: a slug's
 form is checked here, and whether it is installed, its tool set and the task names when
 the endpoints are built (``xippios.mcp.servers``). It reads no environment variable:
@@ -52,7 +53,8 @@ _ENDPOINT_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 # so no other text may name a module path.
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 # A token variable ends in _TOKEN, so the family's leak rule names it by its suffix, as it
-# names _API_KEY, _REFRESH_TOKEN and _SECRET (gap, row 309 (e)).
+# names _API_KEY, _REFRESH_TOKEN and _SECRET (decision (e) of
+# https://github.com/xippios/xippios-mcp/issues/7).
 _TOKEN_VARIABLE = re.compile(r"[A-Z][A-Z0-9_]*_TOKEN")
 _BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
 _TOP_KEYS = ("endpoints", "http")
@@ -93,7 +95,7 @@ class Endpoint:
             in ``_TOKEN`` and never a value, e.g. ``"XIPPIOS_MCP_AGRICULTURE_TOKEN"``;
             ``None`` with ``auth = "none"``.
         allow_remote: Whether the endpoint may be served beyond loopback when the
-            loopback rule would keep it there (ADR-0026, decision 5).
+            loopback rule would keep it there (sdk-core ADR-0026, decision 5).
         path: The config file it was read from, named in every refusal.
     """
 

@@ -407,8 +407,8 @@ def test_a_hook_that_refuses_its_defaults_is_refused_with_the_package(
     assert refused.value.__cause__ is error
 
 
-# The pass-through (ADR-0026, decision 6): an answer reaches the client as the package's
-# tool gives it, a refusal of core's middleware and a task's own error alike.
+# The pass-through (sdk-core ADR-0026, decision 6): an answer reaches the client as the
+# package's tool gives it, a refusal of core's middleware and a task's own error alike.
 
 
 @pytest.mark.anyio

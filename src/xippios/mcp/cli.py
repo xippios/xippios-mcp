@@ -1,8 +1,9 @@
 """The ``xippios-mcp`` entry point: the host's command line.
 
-The host reads a config file that names its endpoints and groups (ADR-0026, decision 2;
-``xippios.mcp.config``) and builds every endpoint's server (``xippios.mcp.servers``).
-Then it serves them, or checks and lists them (gap, row 310 (e)):
+The host reads a config file that names its endpoints and groups (sdk-core ADR-0026,
+decision 2; ``xippios.mcp.config``) and builds every endpoint's server
+(``xippios.mcp.servers``). Then it serves them, or checks and lists them (decision (e) of
+https://github.com/xippios/xippios-mcp/issues/8):
 
 - ``--stdio ENDPOINT`` serves that one endpoint on stdio, without auth and without
   reading a token variable: stdio is the client's own child process.
@@ -11,7 +12,7 @@ Then it serves them, or checks and lists them (gap, row 310 (e)):
   (``xippios.mcp.app``).
 - Without either it stops after the build: it prints one line per endpoint, its name,
   read or write, its tool count and its packages, and exits 0, so an operator checks a
-  config before serving it (gap, row 309 (b)).
+  config before serving it (decision (b) of https://github.com/xippios/xippios-mcp/issues/7).
 
 A refusal ends the process like an argparse error: the message on stderr, exit status
 2, nothing served (sdk-core ADR-0036, decision 8).

@@ -7,7 +7,8 @@ one, is answered ``401 Unauthorized`` with ``WWW-Authenticate: Bearer
 realm="xippios-mcp"``, ``error="invalid_token"`` added for a wrong token (RFC 6750,
 section 3), and never reaches the endpoint. No ``resource_metadata`` is advertised:
 claude.ai's OAuth sign-in needs an authorization server in front of the host, outside
-0.1.0 (ADR-0026, decision 10; gap, row 310 (a)).
+0.1.0 (sdk-core ADR-0026, decision 10; decision (a) of
+https://github.com/xippios/xippios-mcp/issues/8).
 
 The token is read once, when ``--http`` starts, from the environment variable the
 endpoint's ``token_env`` names (conventions §7); a missing or empty variable is a

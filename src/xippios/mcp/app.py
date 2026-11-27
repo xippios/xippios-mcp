@@ -9,7 +9,7 @@ endpoint has a server of its own (``xippios.mcp.servers``), so no server is moun
 twice. ``serve_http`` serves the app with uvicorn.
 
 Before it mounts anything, ``build_app`` applies the checks that need the bind host
-(ADR-0026, decision 5):
+(sdk-core ADR-0026, decision 5):
 
 - An endpoint with ``auth = "none"`` whose server is held to loopback, a tool set of it
   writing or ``loopback_only``, is served on a host of core's ``LOOPBACK_HOSTS`` only,
