@@ -1,9 +1,11 @@
 """The proving sources, each served where it is installed beside the host.
 
 sdk-faostat, sdk-cashctrl and sdk-usda-esr are the three sources that prove xippios-core 0.5.0
-with the host before its release (https://github.com/xippios/sdk-core/issues/485). Every test
-here runs where the sources it names are installed and skips where one is not, so a run on the
-invented sources of ``tests/example`` alone skips them all. A source loads by its ``build()``,
+with the host before its release (https://github.com/xippios/sdk-core/issues/485), and the
+host's extras. The run installs them, ``uv sync --all-extras`` as CI runs it, and the first
+test fails where one is missing, so CI never skips the rest. Every other test runs where the
+sources it names are installed and skips where one is not, so a run on the invented sources of
+``tests/example`` alone fails that one test and skips the rest. A source loads by its ``build()``,
 and every endpoint the host builds of it lists its tools under the names and with the input
 schemas of the source's own ``server``, both reached through ``mcp.Client`` in-process, as a
 client reaches them. Each call is one that the source answers or refuses before any request:
@@ -23,6 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import import_module
+from importlib.metadata import metadata
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
@@ -32,7 +35,7 @@ import pytest
 import respx
 from mcp import Client
 from mcp.server.mcpserver import MCPServer
-from xippios.core import tool_name
+from xippios.core import ConfigError, tool_name
 from xippios.core.mcp import ToolSet
 from xippios.core.testing import mcp_call_text
 
@@ -43,6 +46,8 @@ from xippios.mcp.servers import Built, build_endpoint
 
 SOURCES = ("faostat", "cashctrl", "usda-esr")
 """The proving sources' slugs; a later release of the host serves all twelve sources."""
+SAMPLE = Path(__file__).resolve().parents[1] / "docs" / "host.example.toml"
+"""The README's sample config."""
 
 CONFIG = """\
 [endpoints.faostat]
@@ -188,6 +193,14 @@ def _recorded() -> Iterator[Sent]:
             sent.requests = router.calls.call_count
 
 
+def test_the_run_installs_every_source_of_the_extras() -> None:
+    """The host's extras are the proving sources, and the run installs each of them."""
+    extras = metadata("xippios-mcp").get_all("Provides-Extra") or []
+    assert sorted(extra for extra in extras if extra != "all") == sorted(SOURCES)
+    missing = [slug for slug in SOURCES if not _installed(slug)]
+    assert missing == [], "uv sync --all-extras installs xippios-mcp[all]"
+
+
 @pytest.mark.skipif(
     not any(_installed(slug) for slug in SOURCES), reason="no proving source is installed"
 )
@@ -268,6 +281,38 @@ async def test_the_list_mode_prints_each_endpoint_with_its_tool_count(
         f"agriculture: read, {count['faostat'] + count['usda-esr']} tools of faostat, usda-esr",
         f"cashctrl-write: write, {count['cashctrl:write']} tools of cashctrl",
     ]
+
+
+@_needs("faostat", "usda-esr", "cashctrl")
+def test_the_sample_config_builds_from_the_extras(capsys: pytest.CaptureFixture[str]) -> None:
+    """The README's sample, ``docs/host.example.toml``, names sources of the extras alone.
+
+    So an operator who installs ``xippios-mcp[all]`` checks it as the README says, and it
+    builds every endpoint where 0.1.0's sample named sources that 0.2.0 cannot install.
+    """
+    endpoints = load_config(SAMPLE).endpoints.values()
+    assert {ref.slug for endpoint in endpoints for ref in endpoint.packages} <= set(SOURCES)
+    main(["--config", str(SAMPLE)])
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert [line.partition(",")[0] for line in captured.out.splitlines()] == [
+        "agriculture: read",
+        "accounting-write: write",
+    ]
+
+
+@_needs("usda-esr")
+def test_an_endpoint_of_the_shared_package_is_refused(tmp_path: Path) -> None:
+    """``xippios-usda-fas`` comes with sdk-usda-esr and runs no server, so the host serves none."""
+    assert _installed("usda-fas")
+    path = tmp_path / "host.toml"
+    path.write_text('[endpoints.fas]\npackages = ["usda-fas"]\nauth = "none"\n', encoding="utf-8")
+    with pytest.raises(ConfigError) as refused:
+        build_endpoint(load_config(path).endpoints["fas"])
+    assert str(refused.value).endswith(
+        "endpoints.fas.packages: usda-fas: xippios.usda.fas has no xippios.usda.fas.mcp, "
+        "the module of a source's MCP server"
+    )
 
 
 # One call for each source, with nothing counted: an answer from a table the package carries,

@@ -63,7 +63,7 @@ written for a source (tasks, wrappers, fixtures, `docs/upstream/`) does not appl
 | Import path | `xippios.mcp`; `src/xippios/` is a PEP 420 namespace package (conventions §1) |
 | Entry point | `xippios-mcp = "xippios.mcp.cli:main"`, `--config <path>` required; `--stdio ENDPOINT` serves one endpoint on stdio, `--http` (with `--host`, default `127.0.0.1`, and `--port`, default 8000) every endpoint at `/<name>/mcp`; without either it loads the config, builds every endpoint and prints one line per endpoint; a refusal exits with status 2 |
 | Core | `xippios-core[mcp]~=0.5.0`, one minor (conventions §12), and `xippios-core[testing]~=0.5.0` in the dev group; `mcp`, `starlette` and `uvicorn`, which the host imports itself, with lower bounds at core's lock (conventions §11) |
-| Sources | extras, not dependencies, each with a `>=` floor at the source's first release on core 0.5 and no upper bound (sdk-core ADR-0026, decision 9), and `all` their union. No source has released on core 0.5 yet, so the manifest names none and `all` is empty; a source that is installed is served all the same (ADR-0001, decision 2) |
+| Sources | extras, not dependencies, each with a `>=` floor at the source's first release on core 0.5 and no upper bound (sdk-core ADR-0026, decision 9), and `all` their union. 0.2.0 names the three sources that proved core 0.5.0 with the host, `faostat`, `cashctrl` and `usda-esr`, by the maintainer's decision of 2026-11-24, and the next release names all twelve. `uv.lock` resolves them from PyPI on core's one minor, with no `[tool.uv.sources]`, and `xippios-usda-fas` comes with `xippios-usda-esr` as its dependency, no extra and no package the host serves; `tests/test_package.py` holds the extras and the lock. A source that is installed is served all the same (ADR-0001, decision 2) |
 
 ### What the host reads of a package
 
@@ -83,18 +83,27 @@ what `all` installs and what the hint for a missing package names (`packages.py`
 `load_config` reads a TOML file of `[endpoints.<name>]` tables (`packages`, `include` or
 `exclude` per package by exact task name, `auth`, `token_env`, `allow_remote`) and checks
 its shape, a slug's form among it; `build_all` checks what needs the packages and builds
-the servers, a server of its own for every endpoint (ADR-0001, decision 3). One package
-without a list is `build_server(tool_set)`, the server its entry point serves; a group or
-a listed endpoint is an `MCPServer` named `xippios-<endpoint>` on which `register_tasks`
-registers each package's tool set, narrowed by `Package.narrowed`, a
-`dataclasses.replace` copy with its caps cut to the kept tasks, read and write never
-mixed. Every refusal is core's `ConfigError` naming the file, the endpoint and the key;
-it repeats slugs, task names and a package's module names, but never the value of
-`token_env`, `auth` or `allow_remote`, nor the value of an unknown key. Every
-`ValueError` and `TypeError` raised at a package's import, by its `build()` or by the
-host's narrowed copy, core's refusal of a declaration and a package's own error alike, is
-re-raised as `servers.BuildError`, a `ValueError`, with the file, the endpoint, the
-package and the error's class prefixed. `token_env` names a variable ending in `_TOKEN`,
+the servers, a server of its own for every endpoint (ADR-0001, decision 3). An endpoint
+of one package is `build_server(tool_set)`, the server its entry point serves, with the
+package's own instructions and version, named `xippios-<source>`, or `xippios-<endpoint>`
+with an include or exclude list, which narrows its tool set by `Package.narrowed`, a
+`dataclasses.replace` copy with its caps cut to the kept tasks. A group is an `MCPServer`
+named `xippios-<endpoint>` on which `register_tasks` registers each package's tool set,
+narrowed the same way, read and write never mixed; its instructions open with the host's
+sentence and give each package's own under a heading of its slug. Before any server is
+built, every endpoint applies each tool set's option hook at its defaults:
+`apply_options(option_defaults())`, the options its entry point parses from an empty
+command line, so the endpoint serves the ceilings that the entry point serves without
+options, for the whole process (ADR-0001, decision 7). Every refusal is core's
+`ConfigError` naming the file, the endpoint and the key; it repeats slugs, task names and
+a package's module names, but never the value of `token_env`, `auth` or `allow_remote`,
+nor the value of an unknown key. Every `ValueError` and `TypeError` raised at a package's
+import, by its `build()` or by the host's narrowed copy, core's refusal of a declaration
+and a package's own error alike, the `ValueError` of `option_defaults()` for an option
+without a default, and the `XippiosError` or `ValueError` of the hook applied at those
+defaults, where the entry point would exit with status 2, are re-raised as
+`servers.BuildError`, a `ValueError`, with the file, the endpoint, the package and the
+error's class prefixed. `token_env` names a variable ending in `_TOKEN`,
 which the host reads once, when `--http` starts. An optional `[http]` table names
 `allowed_hosts` and `allowed_origins`.
 
@@ -130,16 +139,19 @@ check can verify it without a `runAsUser`, reads `/etc/xippios-mcp/host.toml`, w
 the operator mounts, serves `--http` on `0.0.0.0:8000` and takes every token from the
 environment (https://github.com/xippios/xippios-mcp/issues/9). `docker.yml`, the host's
 own workflow beside the rendered ones, which hold no job of one repository (sdk-template
-ADR-0003, decision 8), builds it on every pull request and runs `--help`; 0.1.0 pushes no
-image to a registry (sdk-core ADR-0026, decision 2).
+ADR-0003, decision 8), builds it on every pull request, runs `--help` and serves it with a
+config of two bearer endpoints over the three sources of `all`, written in the workflow
+with a random token of the run for each, and expects `401` with the bearer's challenge
+from each for a request without the token; 0.1.0 pushes no image to a registry (sdk-core
+ADR-0026, decision 2).
 
 ### Core's names
 
 The host takes every name of core from one of core's six pinned lists, the `__all__` of
 the six `__init__.py` files of `xippios.core`, by that list's module path, and no private
 name: `ToolSet`, `build_server`, `register_tasks`, `LOOPBACK_HOSTS` and
-`quiet_request_logging` from `xippios.core.mcp`, and `ConfigError` and `tool_name` from
-`xippios.core` (sdk-core ADR-0063, decision 4). `tests/test_package.py` reads every
+`quiet_request_logging` from `xippios.core.mcp`, and `ConfigError`, `XippiosError` and
+`tool_name` from `xippios.core` (sdk-core ADR-0063, decision 4). `tests/test_package.py` reads every
 import of the package, its tests and its scripts with `ast` and fails on any other
 (ADR-0001, decision 5). Every `MCPServer` the host constructs is followed by
 `quiet_request_logging()`, `build_server` calls it itself, and the host calls it again
@@ -148,10 +160,18 @@ every request URL at `INFO`, which can carry a key or a tenant host (sdk-core AD
 
 ### The tests
 
-The tests serve the invented sources of `tests/example`, which send no request, so they
-wait for no real source (ADR-0001, decision 6). The host has no live tests and no
-`live.yml`: the packages' own live runs cover their tasks, so a pull request of the host
-counts its live calls as `none`.
+Core's plugin keeps the run offline (sdk-core ADR-0035): it refuses the network in every
+test not marked `network` or `live`, so nothing reaches an upstream though the sources of
+`all` are installed. The tests serve the invented sources of `tests/example`, which send
+no request, so they wait for no real source (ADR-0001, decision 6). `tests/test_sources.py`
+serves the three sources of `all` from the releases the lock pins: it fails where one is
+not installed, `uv sync --all-extras` installs them, and each of its calls is one that
+the source answers or refuses before any request, counted at httpcore's pools and by
+CPython's socket audit events. `tests/conftest.py` sets the example's ceiling back to its
+Python value after each test: an endpoint that the host builds applies the example's
+option hook at its default, which sets the ceiling of the whole process to 5. The host has
+no live tests and no `live.yml`: the packages' own live runs cover their tasks, so a pull
+request of the host counts its live calls as `none`.
 
 ### What the host never does
 

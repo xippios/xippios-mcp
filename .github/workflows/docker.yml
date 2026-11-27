@@ -6,10 +6,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   docker:
     name: docker
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -18,3 +23,53 @@ jobs:
         run: docker build --tag xippios-mcp:ci .
       - name: The image answers --help
         run: docker run --rm xippios-mcp:ci --help
+      - name: The served image refuses a request without a token
+        run: |
+          read_token="$(openssl rand -hex 32)"
+          write_token="$(openssl rand -hex 32)"
+          echo "::add-mask::${read_token}"
+          echo "::add-mask::${write_token}"
+          config="${RUNNER_TEMP}/host.toml"
+          cat > "${config}" <<'TOML'
+          [endpoints.sources]
+          packages = ["faostat", "cashctrl", "usda-esr"]
+          token_env = "XIPPIOS_MCP_SOURCES_TOKEN"
+
+          [endpoints.cashctrl-write]
+          packages = ["cashctrl:write"]
+          token_env = "XIPPIOS_MCP_CASHCTRL_WRITE_TOKEN"
+          TOML
+          chmod 644 "${config}"
+          XIPPIOS_MCP_SOURCES_TOKEN="${read_token}" \
+          XIPPIOS_MCP_CASHCTRL_WRITE_TOKEN="${write_token}" \
+            docker run --detach --name xippios-mcp-smoke --publish 127.0.0.1:8000:8000 \
+              --volume "${config}:/etc/xippios-mcp/host.toml:ro" \
+              --env XIPPIOS_MCP_SOURCES_TOKEN --env XIPPIOS_MCP_CASHCTRL_WRITE_TOKEN \
+              xippios-mcp:ci
+          initialize='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"docker-smoke","version":"0"}}}'
+          for endpoint in sources cashctrl-write; do
+            headers="${RUNNER_TEMP}/${endpoint}.headers"
+            status="$(curl --silent --show-error --retry 30 --retry-delay 1 --retry-all-errors \
+              --max-time 10 --output /dev/null --dump-header "${headers}" \
+              --write-out '%{http_code}' --request POST \
+              --header 'Content-Type: application/json' \
+              --header 'Accept: application/json, text/event-stream' \
+              --data "${initialize}" "http://127.0.0.1:8000/${endpoint}/mcp")" || {
+              echo "::error::/${endpoint}/mcp did not answer; the server's log follows"
+              exit 1
+            }
+            if [ "${status}" != "401" ]; then
+              echo "::error::/${endpoint}/mcp answered ${status} to a request without a token, not 401"
+              exit 1
+            fi
+            if ! grep -qi '^www-authenticate: Bearer realm="xippios-mcp"' "${headers}"; then
+              echo "::error::/${endpoint}/mcp answered 401 without the bearer's challenge"
+              exit 1
+            fi
+            echo "/${endpoint}/mcp: 401 with the bearer's challenge"
+          done
+      - name: The server's log
+        if: always()
+        run: |
+          docker logs xippios-mcp-smoke || true
+          docker rm --force xippios-mcp-smoke || true

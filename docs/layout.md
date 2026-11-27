@@ -28,9 +28,12 @@ tests/
   example/         the invented sources the tests serve, xippios.example and the nested
                    xippios.example.api, on pytest's pythonpath and mypy's path; they ship
                    in no distribution
+  conftest.py      core's pytest plugin, and the example's ceiling set back after each test
   test_package.py  the host's own checks: the namespace level, py.typed, __version__, the
-                   core bound, the extras' floors and their union, the entry point, the
-                   CLI, core imported by its pinned lists alone, and the template's answers
+                   core bound, the extras of the three proving sources at their floors and
+                   their union, the lock from PyPI on one core minor with xippios-usda-fas
+                   as sdk-usda-esr's dependency alone, the entry point, the CLI, core
+                   imported by its pinned lists alone, and the template's answers
   test_config.py   load_config, the [http] table and every static refusal
   test_servers.py  the tool sets read and the servers built, through mcp.Client
                    in-process, the pass-through and the refusals that need a package
@@ -40,9 +43,16 @@ tests/
                    uvicorn's Server.run stubbed
   test_cli.py      --stdio, --http (serve_http stubbed), the endpoint lines and exit
                    status 2; no test binds a port
+  test_sources.py  the three sources of `all`, served from the releases the lock pins:
+                   each by its build(), its endpoints listing the tools of its own
+                   server, the list mode, the sample config built, and one call each that
+                   counts no request
 docs/
-  host.example.toml  the sample config, loaded by the tests; its build needs the real
-                   sources it names
+  host.example.toml  the sample config, of sources of the extras alone: loaded by
+                   test_config.py and built by test_sources.py
+  reports/2026-11-25-the-host-serves-the-three-proving-sources.md
+                   the run of test_sources.py and the list mode on core 0.5.0's
+                   candidate, with the commits of the host and the three sources
 Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --locked` of
                    `all`, the non-root user xippios as USER 10001:10001, --http on
                    0.0.0.0:8000
@@ -50,7 +60,8 @@ Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --lock
                    .envrc out of the build context
 .github/workflows/
   docker.yml       the host's own workflow beside the rendered ones: the image built from
-                   the checkout and its --help, on every pull request
+                   the checkout, its --help, and its server's 401 to a request without a
+                   token, on every pull request
 ```
 
 Core's family check (`xippios.core.testing.family`) holds no repository of the general

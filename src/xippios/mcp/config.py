@@ -4,8 +4,8 @@ The file is TOML, read with ``tomllib`` (Johannes, 2026-10-29). Each table under
 ``[endpoints]`` is one endpoint, served at ``/<name>/mcp`` over HTTP::
 
     [endpoints.agriculture]
-    packages = ["usda-nass", "usda-psd", "comtrade"]
-    exclude = { usda-nass = ["get_counts"] }
+    packages = ["faostat", "usda-esr"]
+    exclude = { faostat = ["list_bulk_datasets"] }
     auth = "bearer"
     token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"
     allow_remote = false
@@ -348,7 +348,7 @@ def _auth(
     if auth == "none":
         raise refusal(path, key, 'is given with auth = "none"; drop it or set auth = "bearer"')
     # The value is never repeated in a message: a token pasted here by mistake stays out
-    # of the log (ADR-0005; conventions §7).
+    # of the log (sdk-core ADR-0030; conventions §7).
     if not isinstance(token_env, str) or not _TOKEN_VARIABLE.fullmatch(token_env):
         raise refusal(
             path,

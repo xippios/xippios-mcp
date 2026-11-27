@@ -11,8 +11,8 @@
 # HTTP on a loopback --host only, unless it sets allow_remote = true.
 
 [endpoints.agriculture]                        # served at /agriculture/mcp
-packages = ["usda-nass", "usda-psd", "comtrade"]
-exclude = { usda-nass = ["get_counts"] }       # or include = { ... }; exact task names
+packages = ["faostat", "usda-esr"]
+exclude = { faostat = ["list_bulk_datasets"] } # or include = { ... }; exact task names
 auth = "bearer"                                # the default; or "none"
 token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"    # a name ending in _TOKEN, never a value
 allow_remote = false                           # the default
