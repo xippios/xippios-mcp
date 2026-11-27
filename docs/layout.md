@@ -33,8 +33,7 @@ tests/
                    core bound, the extras of the three proving sources at their floors and
                    their union, the lock from PyPI on one core minor with xippios-usda-fas
                    as sdk-usda-esr's dependency alone, the entry point, the CLI, core
-                   imported by its pinned lists alone, the template's answers, and the
-                   job image of publish.yml: its tag, its labels and its permission
+                   imported by its pinned lists alone, and the template's answers
   test_config.py   load_config, the [http] table and every static refusal
   test_servers.py  the tool sets read and the servers built, through mcp.Client
                    in-process, the pass-through and the refusals that need a package
@@ -48,6 +47,9 @@ tests/
                    each by its build(), its endpoints listing the tools of its own
                    server, the list mode, the sample config built, and one call each that
                    counts no request
+  test_docker.py   docker.yml: its steps build, smoke and publish run under bash -e
+                   against stubs of docker, gh, git and curl, a release's tag, labels and
+                   push, no push for any other run, and the file's triggers and permissions
 docs/
   host.example.toml  the sample config, of sources of the extras alone: loaded by
                    test_config.py and built by test_sources.py
@@ -60,12 +62,12 @@ Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --lock
 .dockerignore      keeps .git, .venv, tests, .worktrees, the caches and any .env or
                    .envrc out of the build context
 .github/workflows/
-  docker.yml       the host's own workflow beside the rendered ones: the image built from
-                   the checkout, its --help, and its server's 401 to a request without a
-                   token, on every pull request
-  publish.yml      the rendered release train, with the host's own job image: once PyPI
-                   holds the release, the image pushed to ghcr.io/xippios/xippios-mcp under
-                   the version alone
+  docker.yml       the host's own workflow beside the rendered ones, one job in three
+                   steps: build, the image of the checkout or of a release's commit; smoke,
+                   its --help and its server's 401 to a request without a token; publish,
+                   for a release alone, the image pushed to ghcr.io/xippios/xippios-mcp
+                   under the version; on every pull request and after every run of
+                   publish.yml
 ```
 
 Core's family check (`xippios.core.testing.family`) holds no repository of the general
