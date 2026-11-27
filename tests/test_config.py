@@ -212,7 +212,8 @@ REFUSALS = [
         "a group that mixes write and read",
         _endpoint('packages = ["cashctrl:write", "usda-nass"]\nauth = "none"'),
         "endpoints.agriculture.packages",
-        "a group never mixes read and write tools",
+        "mixes write servers (<slug>:write) and read servers; a group never mixes read and "
+        "write tools (sdk-core ADR-0026, decision 4), so give each its own endpoint",
     ),
     (
         "a package's read and write servers together",
