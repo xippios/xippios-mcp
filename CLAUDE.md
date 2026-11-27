@@ -137,13 +137,27 @@ the final stage carries the venv alone: it runs as the non-root user `xippios`, 
 gid 10001, which `USER 10001:10001` names by number so that a Kubernetes `runAsNonRoot`
 check can verify it without a `runAsUser`, reads `/etc/xippios-mcp/host.toml`, which
 the operator mounts, serves `--http` on `0.0.0.0:8000` and takes every token from the
-environment (https://github.com/xippios/xippios-mcp/issues/9). `docker.yml`, the host's
-own workflow beside the rendered ones, which hold no job of one repository (sdk-template
-ADR-0003, decision 8), builds it on every pull request, runs `--help` and serves it with a
-config of two bearer endpoints over the three sources of `all`, written in the workflow
-with a random token of the run for each, and expects `401` with the bearer's challenge
-from each for a request without the token; 0.1.0 pushes no image to a registry (sdk-core
-ADR-0026, decision 2).
+environment (https://github.com/xippios/xippios-mcp/issues/9).
+
+`docker.yml`, the host's own workflow beside the rendered ones, which hold no job of one
+repository (sdk-template ADR-0003, decision 8), holds the whole of the image in one job,
+`docker`, the check that the organization's ruleset requires, in three steps, as the
+organization's web host holds its own (https://github.com/xippios/xippios-mcp/issues/42). It
+runs on every pull request, after every run of `publish.yml` and by hand. `build` builds the
+checkout, for a run after `publish.yml` the commit that run ran on, with the labels
+`org.opencontainers.image.source` and `.revision`, and refuses a run of `publish.yml` that
+neither a push nor a dispatch started. Where that run's job `publish` succeeded,
+it reads the manifest's version, refuses where the tag `v<version>` names another commit,
+and adds the tag `ghcr.io/xippios/xippios-mcp:<version>`, the manifest's version without a
+`v`, and the label `.version`. `smoke` runs `--help`, serves the image with a config of two
+bearer endpoints over the three sources of `all`, written in the step with a random token
+of the run for each, and expects `401` with the bearer's challenge from each for a request
+without the token. `publish`, the one step with an `if:`, runs for a release alone: it logs
+in to `ghcr.io` with the job's own token on standard input, pushes the one tag and logs
+out. The tag that `publish.yml` pushes with the workflow's token starts no other workflow,
+so `docker.yml` follows that workflow's runs by `workflow_run` and reads a run's jobs with
+`actions: read`. `tests/test_docker.py` runs each step's script against stubs of `docker`,
+`gh`, `git` and `curl` and reads the file (https://github.com/xippios/xippios-mcp/issues/38).
 
 ### Core's names
 

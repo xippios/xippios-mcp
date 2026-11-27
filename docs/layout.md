@@ -47,6 +47,9 @@ tests/
                    each by its build(), its endpoints listing the tools of its own
                    server, the list mode, the sample config built, and one call each that
                    counts no request
+  test_docker.py   docker.yml: its steps build, smoke and publish run under bash -e
+                   against stubs of docker, gh, git and curl, a release's tag, labels and
+                   push, no push for any other run, and the file's triggers and permissions
 docs/
   host.example.toml  the sample config, of sources of the extras alone: loaded by
                    test_config.py and built by test_sources.py
@@ -59,9 +62,12 @@ Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --lock
 .dockerignore      keeps .git, .venv, tests, .worktrees, the caches and any .env or
                    .envrc out of the build context
 .github/workflows/
-  docker.yml       the host's own workflow beside the rendered ones: the image built from
-                   the checkout, its --help, and its server's 401 to a request without a
-                   token, on every pull request
+  docker.yml       the host's own workflow beside the rendered ones, one job in three
+                   steps: build, the image of the checkout or of a release's commit; smoke,
+                   its --help and its server's 401 to a request without a token; publish,
+                   for a release alone, the image pushed to ghcr.io/xippios/xippios-mcp
+                   under the version; on every pull request and after every run of
+                   publish.yml
 ```
 
 Core's family check (`xippios.core.testing.family`) holds no repository of the general
