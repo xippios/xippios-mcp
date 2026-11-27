@@ -41,9 +41,12 @@ release, what to port into those by hand in the same pull request.
 
 The update writes every other file it renders again, since they are the template's,
 `.claude/rules/never.md` among them. This package keeps no text of its own in them: its own
-words go into a file it fills. `pyproject.toml` is one it fills, its manifest once rendered,
-so no update changes its dependencies, its scripts or its bound of `xippios-core`, which an
-adoption of a core minor raises there by hand.
+words go into a file it fills. The one exception is the job `image` of `publish.yml`, the
+host's own, which sdk-template does not render: an update that writes `publish.yml` again
+keeps that job in its pull request, and `tests/test_package.py` fails where it is lost.
+`pyproject.toml` is one it fills, its manifest once rendered, so no update changes its
+dependencies, its scripts or its bound of `xippios-core`, which an adoption of a core minor
+raises there by hand.
 
 ## What only this package knows
 
@@ -138,12 +141,17 @@ gid 10001, which `USER 10001:10001` names by number so that a Kubernetes `runAsN
 check can verify it without a `runAsUser`, reads `/etc/xippios-mcp/host.toml`, which
 the operator mounts, serves `--http` on `0.0.0.0:8000` and takes every token from the
 environment (https://github.com/xippios/xippios-mcp/issues/9). `docker.yml`, the host's
-own workflow beside the rendered ones, which hold no job of one repository (sdk-template
-ADR-0003, decision 8), builds it on every pull request, runs `--help` and serves it with a
-config of two bearer endpoints over the three sources of `all`, written in the workflow
-with a random token of the run for each, and expects `401` with the bearer's challenge
-from each for a request without the token; 0.1.0 pushes no image to a registry (sdk-core
-ADR-0026, decision 2).
+own workflow beside the rendered ones (sdk-template ADR-0003, decision 8), builds it on
+every pull request, runs `--help` and serves it with a config of two bearer endpoints over
+the three sources of `all`, written in the workflow with a random token of the run for
+each, and expects `401` with the bearer's challenge from each for a request without the
+token, and it pushes nothing. A release pushes the image: the job `image` of
+`publish.yml`, once the job `publish` has put the release on PyPI, builds it from the tagged
+commit with the labels `org.opencontainers.image.source`, `.version` and `.revision`, logs
+in to `ghcr.io` with the job's own token, for which that job alone takes `packages: write`,
+and pushes `ghcr.io/xippios/xippios-mcp:<version>`, the manifest's version without a `v`,
+under no other tag. `tests/test_package.py` holds the tag, the labels and the permission
+(https://github.com/xippios/xippios-mcp/issues/38).
 
 ### Core's names
 

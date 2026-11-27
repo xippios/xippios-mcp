@@ -11,7 +11,8 @@ token by default; the secrets stay in the environment, never in the config file.
 `xippios-mcp --config <path>` checks a config, builds every endpoint's server and lists
 the endpoints; `--stdio <endpoint>` serves one endpoint on stdio, and `--http` serves
 every endpoint over streamable HTTP, each with its bearer (see Serving). A Docker image,
-built from this repository, serves them from a container (see Docker).
+which each release publishes to `ghcr.io/xippios/xippios-mcp`, serves them from a container
+(see Docker).
 
 ## Install
 
@@ -248,8 +249,19 @@ check.
 ## Docker
 
 The repository builds an image of the host with every package of `all`, sdk-faostat,
-sdk-cashctrl and sdk-usda-esr, at the versions `uv.lock` pins. 0.1.0 publishes no image to a
-registry: build it from a checkout.
+sdk-cashctrl and sdk-usda-esr, at the versions `uv.lock` pins. Each release publishes it to
+the GitHub Container Registry as `ghcr.io/xippios/xippios-mcp`, built for `linux/amd64` and
+tagged with the release's version alone, as `0.2.0`, with no `v` and no `latest`:
+
+```bash
+docker pull ghcr.io/xippios/xippios-mcp:0.2.0
+```
+
+A published image carries three labels: `org.opencontainers.image.source`, the repository,
+`org.opencontainers.image.version`, the release's version, and
+`org.opencontainers.image.revision`, the commit that the release tagged, so `docker inspect`
+names the commit that an image was built from. An image built from a checkout is the same
+image without those labels, under the name it is given:
 
 ```bash
 docker build -t xippios-mcp .
@@ -272,7 +284,7 @@ token_env = "XIPPIOS_MCP_AGRICULTURE_TOKEN"
 docker run --rm -p 8000:8000 \
   -v "$PWD/host.toml:/etc/xippios-mcp/host.toml:ro" \
   -e XIPPIOS_MCP_AGRICULTURE_TOKEN \
-  xippios-mcp
+  ghcr.io/xippios/xippios-mcp:0.2.0
 ```
 
 serves it at `http://127.0.0.1:8000/agriculture/mcp`. The variables the packages read
@@ -280,8 +292,8 @@ themselves, their keys among them, are passed the same way, by name; each packag
 README names its own. Arguments after the image name replace the image's own, so
 
 ```bash
-docker run --rm -v "$PWD/host.toml:/etc/xippios-mcp/host.toml:ro" xippios-mcp \
-  --config /etc/xippios-mcp/host.toml
+docker run --rm -v "$PWD/host.toml:/etc/xippios-mcp/host.toml:ro" \
+  ghcr.io/xippios/xippios-mcp:0.2.0 --config /etc/xippios-mcp/host.toml
 ```
 
 checks the mounted config and lists its endpoints without serving them.
@@ -309,20 +321,24 @@ sources of `all`, and expects `401` and the bearer's challenge from each for a r
 without a token, the check `docker`. Each request is retried for about 30 seconds while the
 server starts, and a `401` is the answer, never retried: the host serves only once it has
 built every endpoint. The job stops after 15 minutes, and a newer push to the pull request
-cancels the run still going. It pushes no image and logs in to no registry
-(sdk-core ADR-0026, decision 2). It is handed no secret, since the run makes its own random
+cancels the run still going. It pushes no image and logs in to no registry: a release's image
+goes from `publish.yml` alone. It is handed no secret, since the run makes its own random
 tokens and masks them in the log, and no variable switches it off.
 
 `publish.yml` is the release train (conventions §12): on a push to `main` whose
 `pyproject.toml` names a version that has no tag yet and has its section in `CHANGELOG.md`,
 it runs `ci.yml`, refuses a core pinned to git, tags the merge commit, builds the package
 and, once a reviewer of the environment `pypi` approves the run, publishes it to PyPI by
-trusted publishing. Every push to `main` and a dispatch start it, and a push that brings no
-release ends quietly. It is handed no secret: the step that tells a release is handed the
-job's token as `GH_TOKEN`, the tag goes with the job's token and PyPI trusts the workflow
-itself. Its job `tag` holds the one checkout of the repository that keeps its credentials,
-since it pushes the tag with the job's token; every other checkout sets
-`persist-credentials: false` (conventions §13). No variable switches it off.
+trusted publishing. Once PyPI holds the release, its job `image` builds the image of Docker
+above from the tagged commit with the three labels and pushes it to
+`ghcr.io/xippios/xippios-mcp` under the version alone, the manifest's without a `v`. Every
+push to `main` and a dispatch start it, and a push that brings no release ends quietly. It
+is handed no secret: the step that tells a release is handed the job's token as `GH_TOKEN`,
+the tag and the image go with the job's token, which `docker login` reads on its standard
+input and `docker logout` drops after the push, and PyPI trusts the workflow itself. The job `image` alone adds `packages: write` to `contents: read`. Its job
+`tag` holds the one checkout of the repository that keeps its credentials, since it pushes
+the tag with the job's token; every other checkout sets `persist-credentials: false`
+(conventions §13). No variable switches it off.
 
 `conventions.yml` calls the organization's review of a pull request against the documents
 listed under Documents below, the check `conventions / conventions`, when a pull request

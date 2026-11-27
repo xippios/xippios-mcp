@@ -33,7 +33,8 @@ tests/
                    core bound, the extras of the three proving sources at their floors and
                    their union, the lock from PyPI on one core minor with xippios-usda-fas
                    as sdk-usda-esr's dependency alone, the entry point, the CLI, core
-                   imported by its pinned lists alone, and the template's answers
+                   imported by its pinned lists alone, the template's answers, and the
+                   job image of publish.yml: its tag, its labels and its permission
   test_config.py   load_config, the [http] table and every static refusal
   test_servers.py  the tool sets read and the servers built, through mcp.Client
                    in-process, the pass-through and the refusals that need a package
@@ -62,6 +63,9 @@ Dockerfile         the image: python:3.12-slim and uv by digest, `uv sync --lock
   docker.yml       the host's own workflow beside the rendered ones: the image built from
                    the checkout, its --help, and its server's 401 to a request without a
                    token, on every pull request
+  publish.yml      the rendered release train, with the host's own job image: once PyPI
+                   holds the release, the image pushed to ghcr.io/xippios/xippios-mcp under
+                   the version alone
 ```
 
 Core's family check (`xippios.core.testing.family`) holds no repository of the general
