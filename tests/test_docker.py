@@ -28,8 +28,14 @@ LABEL = "org.opencontainers.image"
 HEAD = "a" * 40
 """The commit that the stub of ``git`` names as the one checked out."""
 OTHER = "b" * 40
-RELEASE = {"EVENT": "workflow_run", "RUN_ID": "7", "STUB_PUBLISH": "success", "STUB_TAGGED": HEAD}
-"""A run after a run of Publish whose job ``publish`` succeeded, its tag on the commit built."""
+RELEASE = {
+    "EVENT": "workflow_run",
+    "RUN_EVENT": "push",
+    "RUN_ID": "7",
+    "STUB_PUBLISH": "success",
+    "STUB_TAGGED": HEAD,
+}
+"""A run after a push's run of Publish whose job ``publish`` succeeded, its tag on the commit."""
 
 STUBS = {
     "docker": """printf 'docker\\t%s\\n' "$*" >> "$CALLS"
@@ -163,12 +169,13 @@ def version() -> str:
     return found
 
 
+@pytest.mark.parametrize("started", ["push", "workflow_dispatch"])
 def test_a_release_pushes_its_image_tagged_with_the_manifests_version(
-    version: str, tmp_path: Path
+    started: str, version: str, tmp_path: Path
 ) -> None:
     assert str(Version(version)) == version
     assert not version.startswith("v")
-    built = _run("build", tmp_path, **RELEASE)
+    built = _run("build", tmp_path, **{**RELEASE, "RUN_EVENT": started})
     assert built.status == 0, built.stdout
     jobs = '.jobs[] | select(.name == "publish") | .conclusion'
     assert ["gh", "api", "repos/xippios/xippios-mcp/actions/runs/7/jobs", "--jq", jobs] in (
@@ -207,7 +214,12 @@ def test_the_released_image_carries_its_source_version_and_revision(
         pytest.param({"EVENT": "pull_request"}, id="a pull request"),
         pytest.param({"EVENT": "workflow_dispatch"}, id="a dispatch"),
         pytest.param(
-            {"EVENT": "workflow_run", "RUN_ID": "8", "STUB_PUBLISH": "skipped"},
+            {
+                "EVENT": "workflow_run",
+                "RUN_EVENT": "push",
+                "RUN_ID": "8",
+                "STUB_PUBLISH": "skipped",
+            },
             id="a run of Publish that released nothing",
         ),
     ],
@@ -223,6 +235,16 @@ def test_a_build_of_no_release_publishes_nothing(event: dict[str, str], tmp_path
     assert not [call for call in built.calls if call[:2] == ["git", "ls-remote"]]
     if event["EVENT"] != "workflow_run":
         assert not [call for call in built.calls if call[0] == "gh"]
+
+
+@pytest.mark.parametrize("started", ["pull_request", "schedule", ""])
+def test_a_run_of_publish_from_another_event_builds_nothing(started: str, tmp_path: Path) -> None:
+    """A token that writes packages builds no commit of a run that another event started."""
+    built = _run("build", tmp_path, **{**RELEASE, "RUN_EVENT": started})
+    assert built.status == 1
+    assert "not on a push or a dispatch" in built.stdout
+    assert not [call for call in built.calls if call[0] in {"docker", "gh"}]
+    assert built.output == {}
 
 
 @pytest.mark.parametrize("tagged", [OTHER, ""], ids=["another commit", "no tag"])
@@ -287,6 +309,7 @@ def test_the_workflow_runs_after_publish_on_its_commit_with_the_jobs_token() -> 
         assert docker.count(marker) == 1, marker
     assert _step("build").env == {
         "EVENT": "${{ github.event_name }}",
+        "RUN_EVENT": "${{ github.event.workflow_run.event }}",
         "RUN_ID": "${{ github.event.workflow_run.id }}",
         "GH_TOKEN": "${{ github.token }}",
     }
