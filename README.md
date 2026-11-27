@@ -321,18 +321,22 @@ whole of the image of Docker above: one job, the check `docker`, in three steps.
 every pull request, after every run of `publish.yml` and by hand, and every run builds and
 smoke-tests the image. `build` builds it from the checkout, for a run after `publish.yml`
 from the commit that run ran on, with the labels `org.opencontainers.image.source` and
-`.revision`. Where that run's job `publish` succeeded, `build` reads the version of
-`pyproject.toml`, refuses where the tag `v<version>` names another commit, and adds the tag
-`ghcr.io/xippios/xippios-mcp:<version>` and the label `.version`. `smoke` runs its `--help`,
-then serves it as an operator does, with a mounted config of two bearer endpoints over the
-three sources of `all`, and expects `401` and the bearer's challenge from each for a
-request without a token. Each request is retried for about 30 seconds while the server
-starts, and a `401` is the answer, never retried: the host serves only once it has built
-every endpoint. `publish` runs for a release alone: it logs in to `ghcr.io` with the job's
-own token, which `docker login` reads on its standard input, pushes the one tag and logs
-out, and a pull request never reaches it. The job stops after 15 minutes. A newer push to a
-pull request cancels the run still going, and a run on `main` has a group of its own, so
-that no release's run waits behind another or is cancelled. The job takes `actions: read`,
+`.revision`, and it refuses a run of `publish.yml` that neither a push nor a dispatch
+started before it builds anything. Where that run's job `publish` succeeded, `build` reads
+the version of `pyproject.toml`, refuses where the tag `v<version>` names another commit, and
+adds the tag `ghcr.io/xippios/xippios-mcp:<version>` and the label `.version`. `smoke` runs
+its `--help`, then serves it as an operator does, with a mounted config of two bearer
+endpoints over the three sources of `all`, and expects `401` and the bearer's challenge from
+each for a request without a token. Each request is retried for about 30 seconds while the
+server starts, and a `401` is the answer, never retried: the host serves only once it has
+built every endpoint. `publish` runs for a release alone: it logs in to `ghcr.io` with the
+job's own token, which `docker login` reads on its standard input, pushes the one tag and
+logs out, and a pull request never reaches it. Where a release's run of `docker.yml` fails
+after PyPI took the release, a re-run of that run's failed job publishes the image, since a
+re-run takes the commit and the ref of its original event, and a dispatch of `docker.yml`
+publishes nothing. The job stops after 15 minutes. A newer push to a pull request cancels
+the run still going, and a run on `main` has a group of its own, so that no release's run
+waits behind another or is cancelled. The job takes `actions: read`,
 to read the jobs of the run of `publish.yml`, and `packages: write` beside `contents: read`.
 It is handed no secret, since `build` and `publish` take the job's own token and the smoke
 test makes its own random tokens and masks them in the log, and no variable switches it off.

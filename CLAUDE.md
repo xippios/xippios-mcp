@@ -145,7 +145,8 @@ repository (sdk-template ADR-0003, decision 8), holds the whole of the image in 
 organization's web host holds its own (https://github.com/xippios/xippios-mcp/issues/42). It
 runs on every pull request, after every run of `publish.yml` and by hand. `build` builds the
 checkout, for a run after `publish.yml` the commit that run ran on, with the labels
-`org.opencontainers.image.source` and `.revision`. Where that run's job `publish` succeeded,
+`org.opencontainers.image.source` and `.revision`, and refuses a run of `publish.yml` that
+neither a push nor a dispatch started. Where that run's job `publish` succeeded,
 it reads the manifest's version, refuses where the tag `v<version>` names another commit,
 and adds the tag `ghcr.io/xippios/xippios-mcp:<version>`, the manifest's version without a
 `v`, and the label `.version`. `smoke` runs `--help`, serves the image with a config of two
