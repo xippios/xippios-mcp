@@ -146,6 +146,17 @@ def _run(name: str, tmp_path: Path, **env: str) -> Ran:
     )
 
 
+def _jobs(workflow: str) -> dict[str, str]:
+    """Each job of a workflow by its key, the text of its block."""
+    jobs: dict[str, list[str]] = {}
+    for line in workflow.split("\njobs:\n", 1)[1].splitlines():
+        if re.fullmatch(r"  [a-z][a-z0-9-]*:", line):
+            jobs[line.strip()[:-1]] = []
+        elif jobs:
+            jobs[list(jobs)[-1]].append(line)
+    return {key: "\n".join(lines) for key, lines in jobs.items()}
+
+
 def _build(ran: Ran) -> list[str]:
     [build] = [call for call in ran.calls if call[:2] == ["docker", "build"]]
     return build
@@ -318,3 +329,15 @@ def test_the_workflow_runs_after_publish_on_its_commit_with_the_jobs_token() -> 
         "IMAGE": "${{ steps.build.outputs.image }}",
         "TOKEN": "${{ secrets.GITHUB_TOKEN }}",
     }
+
+
+def test_build_reads_the_job_that_publishes_to_pypi() -> None:
+    """The job whose success makes a release is the one of Publish at the environment pypi.
+
+    ``publish.yml`` is the template's render, which an update writes again: a job renamed there
+    would leave every release without an image and every check green.
+    """
+    jobs = _jobs((WORKFLOWS / "publish.yml").read_text(encoding="utf-8"))
+    [pypi] = [job for job in jobs.values() if "\n    environment: pypi\n" in f"\n{job}\n"]
+    [name] = re.findall(r"^    name: (.+)$", pypi, re.MULTILINE)
+    assert re.findall(r'select\(\.name == "([^"]+)"\)', _step("build").script) == [name]
